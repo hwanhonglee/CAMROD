@@ -1,0 +1,1 @@
+{"stage": "explicit operator-selected control", "selector": "[data-ui=\"operator-arrival-return-confirm\"]", "x": 455.0, "y": 593.516, "transport": "CDP.Input.dispatchMouseEvent", "hit_test": true, "render_settled": true, "stable_for_s": 0.3049218589985685}

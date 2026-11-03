@@ -1,0 +1,361 @@
+{
+  "schema": "camrod.live_carla.tag_alignment_before.v1",
+  "HH_261102": "Preserve actual pixels, topic counts and live station parameters before any alignment change.",
+  "captured_utc": "2026-11-02T11:28:58.231381+00:00",
+  "duration_s": 5,
+  "scope": "Stationary failed-trial CARLA rear sensor streams; no motion, SOC, lease, parameter or map mutation.",
+  "counts": {
+    "/localization/pose": 100,
+    "/sensing/camera/econ_rear/camera_info": 47,
+    "/sensing/camera/econ_rear/image_raw": 26,
+    "/sensing/camera/econ_rear/image_rect": 26,
+    "/perception/apriltag_parking_detector/debug_image": 26,
+    "/perception/apriltag_parking_detector/tag_pose": 26,
+    "/parking/private/reverse/status": 5,
+    "/parking/private/apriltag/status": 10,
+    "/control/drop_zone_maneuver_controller/status": 5
+  },
+  "images": {
+    "/sensing/camera/econ_rear/image_raw": {
+      "path": "rear_raw.png",
+      "received_utc": "2026-11-02T11:28:47.517517+00:00",
+      "received_monotonic_s": 24032.412255056,
+      "header": {
+        "stamp": {
+          "sec": 1793618927,
+          "nanosec": 482349592
+        },
+        "frame_id": "camera_rear"
+      },
+      "width": 960,
+      "height": 720,
+      "source_encoding": "bgra8",
+      "bytes": 1480380,
+      "sha256": "b12b0504989800eb85f8a8f8480c9b151dec8c0e92b5b41e04e19a2f99d4612a"
+    },
+    "/sensing/camera/econ_rear/image_rect": {
+      "path": "rear_rect.png",
+      "received_utc": "2026-11-02T11:28:47.542966+00:00",
+      "received_monotonic_s": 24032.43770268,
+      "header": {
+        "stamp": {
+          "sec": 1793618927,
+          "nanosec": 482349592
+        },
+        "frame_id": "camera_rear"
+      },
+      "width": 960,
+      "height": 720,
+      "source_encoding": "bgra8",
+      "bytes": 1480380,
+      "sha256": "b12b0504989800eb85f8a8f8480c9b151dec8c0e92b5b41e04e19a2f99d4612a"
+    },
+    "/perception/apriltag_parking_detector/debug_image": {
+      "path": "detector_debug.png",
+      "received_utc": "2026-11-02T11:28:47.566444+00:00",
+      "received_monotonic_s": 24032.461184488,
+      "header": {
+        "stamp": {
+          "sec": 1793618927,
+          "nanosec": 482349592
+        },
+        "frame_id": "camera_rear"
+      },
+      "width": 960,
+      "height": 720,
+      "source_encoding": "bgr8",
+      "bytes": 1460993,
+      "sha256": "901dd042941bae28625cef80234cb3d3497e3a3721ccc8c61d5197c33240f816"
+    }
+  },
+  "latest": {
+    "/localization/pose": {
+      "received_utc": "2026-11-02T11:28:52.286597+00:00",
+      "received_monotonic_s": 24037.181336539,
+      "data": {
+        "header": {
+          "stamp": {
+            "sec": 1793618932,
+            "nanosec": 285692675
+          },
+          "frame_id": "map"
+        },
+        "pose": {
+          "position": {
+            "x": -8.492698430956292,
+            "y": 40.28740467242185,
+            "z": 0.0
+          },
+          "orientation": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.7119480889191299,
+            "w": 0.7022320974467052
+          }
+        }
+      }
+    },
+    "/sensing/camera/econ_rear/camera_info": {
+      "received_utc": "2026-11-02T11:28:52.225798+00:00",
+      "received_monotonic_s": 24037.120532351,
+      "data": {
+        "header": {
+          "stamp": {
+            "sec": 1793618932,
+            "nanosec": 225461939
+          },
+          "frame_id": "camera_rear"
+        },
+        "height": 720,
+        "width": 960,
+        "distortion_model": "plumb_bob",
+        "d": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "k": [
+          480.00000000000006,
+          0.0,
+          480.0,
+          0.0,
+          480.00000000000006,
+          360.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "r": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "p": [
+          480.00000000000006,
+          0.0,
+          480.0,
+          0.0,
+          0.0,
+          480.00000000000006,
+          360.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "binning_x": 0,
+        "binning_y": 0,
+        "roi": {
+          "x_offset": 0,
+          "y_offset": 0,
+          "height": 0,
+          "width": 0,
+          "do_rectify": false
+        }
+      }
+    },
+    "/perception/apriltag_parking_detector/tag_pose": {
+      "received_utc": "2026-11-02T11:28:52.149350+00:00",
+      "received_monotonic_s": 24037.044089384,
+      "data": {
+        "header": {
+          "stamp": {
+            "sec": 1793618932,
+            "nanosec": 132157299
+          },
+          "frame_id": "camera_rear"
+        },
+        "family": "tag36h11",
+        "id": 3,
+        "tag_frame": "parking_tag_3",
+        "pose": {
+          "header": {
+            "stamp": {
+              "sec": 1793618932,
+              "nanosec": 132157299
+            },
+            "frame_id": "camera_rear"
+          },
+          "pose": {
+            "position": {
+              "x": 0.0011873757880033807,
+              "y": -0.0012683221396528055,
+              "z": 0.39898093381393956
+            },
+            "orientation": {
+              "x": -0.060789711363907636,
+              "y": 0.06387355419451993,
+              "z": 0.7057561962082848,
+              "w": 0.7029459236530686
+            }
+          }
+        }
+      }
+    },
+    "/parking/private/reverse/status": {
+      "received_utc": "2026-11-02T11:28:51.630964+00:00",
+      "received_monotonic_s": 24036.525697728,
+      "data": {
+        "stamp": {
+          "sec": 1793618931,
+          "nanosec": 630712080
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE charging=False detail=cancel=parking_dispatcher:backend_startup_discovery_reassert:2:operator_stop",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    "/parking/private/apriltag/status": {
+      "received_utc": "2026-11-02T11:28:52.258108+00:00",
+      "received_monotonic_s": 24037.152842389,
+      "data": {
+        "stamp": {
+          "sec": 1793618932,
+          "nanosec": 257835076
+        },
+        "module_name": "apriltag_parking_controller",
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE tag_distance_m=0.399 axis_distance_m=1.018 lateral_m=0.003 heading_rad=-0.004 remaining_tag_m=0.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 charging=false",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    "/control/drop_zone_maneuver_controller/status": {
+      "received_utc": "2026-11-02T11:28:52.268885+00:00",
+      "received_monotonic_s": 24037.163621329,
+      "data": {
+        "stamp": {
+          "sec": 1793618932,
+          "nanosec": 268508537
+        },
+        "module_name": "control",
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 parking_point_error_m=0.000 parking_point_body_forward_m=0.000 parking_point_body_lateral_m=0.000 target_yaw_deg=91.79 settle_s=0.00 yaw_rate_degps=0.00",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    }
+  },
+  "graph": {
+    "/sensing/camera/econ_rear/image_raw": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/carla_sensor_relay",
+          "type": "sensor_msgs/msg/Image"
+        }
+      ]
+    },
+    "/sensing/camera/econ_rear/image_rect": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/carla_sensor_relay",
+          "type": "sensor_msgs/msg/Image"
+        }
+      ]
+    },
+    "/perception/apriltag_parking_detector/debug_image": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/perception/apriltag_parking_detector",
+          "type": "sensor_msgs/msg/Image"
+        }
+      ]
+    },
+    "/sensing/camera/econ_rear/camera_info": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/carla_sensor_relay",
+          "type": "sensor_msgs/msg/CameraInfo"
+        }
+      ]
+    },
+    "/perception/apriltag_parking_detector/tag_pose": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/perception/apriltag_parking_detector",
+          "type": "avg_msgs/msg/AvgAprilTagPose"
+        }
+      ]
+    },
+    "/localization/pose": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/localization/pose_selector",
+          "type": "avg_msgs/msg/AvgPoseStamped"
+        }
+      ]
+    },
+    "/parking/private/apriltag/status": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/parking/apriltag_parking_controller",
+          "type": "avg_msgs/msg/ModuleState"
+        }
+      ]
+    },
+    "/parking/private/reverse/status": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/parking/reverse_parking_controller",
+          "type": "avg_msgs/msg/ModuleState"
+        }
+      ]
+    },
+    "/control/drop_zone_maneuver_controller/status": {
+      "publisher_count": 1,
+      "publishers": [
+        {
+          "node": "/control/drop_zone_maneuver_controller",
+          "type": "avg_msgs/msg/ModuleState"
+        }
+      ]
+    }
+  },
+  "live_parameters": {
+    "/perception/apriltag_parking_detector": {
+      "exit_code": 0,
+      "stdout": "/perception/apriltag_parking_detector:\n  ros__parameters:\n    camera_frame_id: camera_rear\n    camera_info_topic: /sensing/camera/econ_rear/camera_info\n    debug_jpeg_quality: 80\n    image_topic: /sensing/camera/econ_rear/image_rect\n    max_reproj_error_px: 2.0\n    n_threads: 2\n    publish_debug_image: true\n    publish_tf: true\n    qos_overrides:\n      /parameter_events:\n        publisher:\n          depth: 1000\n          durability: volatile\n          history: keep_last\n          reliability: reliable\n      /tf:\n        publisher:\n          depth: 100\n          durability: volatile\n          history: keep_last\n          reliability: reliable\n    quad_decimate: 1.0\n    roi_full_search_interval: 30\n    roi_scale: 3.0\n    tag_family: tag36h11\n    tag_size: 0.16\n    target_tag_id: 3\n    use_sim_time: false\n\n",
+      "stderr": "1793618932.866308 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n"
+    },
+    "/parking/apriltag_parking_controller": {
+      "exit_code": 0,
+      "stdout": "/parking/apriltag_parking_controller:\n  ros__parameters:\n    axis_full_trust_distance_m: 0.743\n    axis_minimum_filter_weight: 0.05\n    axis_minimum_trust_distance_m: 4.443\n    base_frame_id: robot_center_link\n    command_topic: /parking/private/apriltag/cmd_vel\n    control_rate_hz: 30.0\n    diagnostics_topic: /parking/private/apriltag/diagnostics\n    docking_started_voice_key: docking.started\n    docking_started_voice_timeout_s: 4.0\n    enable_docking_started_voice_gate: true\n    final_heading_tolerance_rad: 0.1\n    final_insertion_speed_mps: 0.138889\n    final_insertion_start_distance_m: 0.993\n    final_lateral_tolerance_m: 0.03\n    final_yaw_angular_speed_radps: 0.2\n    final_yaw_settle_hold_s: 0.8\n    final_yaw_settle_max_rate_degps: 3.0\n    heading_gain: 1.2\n    invert_angular_command_while_reversing: false\n    lateral_to_heading_gain: 2.0\n    maximum_angular_speed_radps: 1.0\n    maximum_approach_angle_rad: 0.5\n    maximum_retries: 5\n    minimum_approach_turn_radius_m: 0.85\n    odometry_frame_id: odom\n    odometry_timeout_s: 0.5\n    odometry_topic: /localization/odometry\n    operation_topic: /parking/private/apriltag/operation\n    parked_distance_from_tag_m: 0.943\n    platform_status_topic: /platform/status\n    pose_filter_gain: 0.3\n    publish_visualization: true\n    qos_overrides:\n      /parameter_events:\n        publisher:\n          depth: 1000\n          durability: volatile\n          history: keep_last\n          reliability: reliable\n    require_charging_for_completion: true\n    retry_forward_distance_m: 1.0\n    reverse_approach_speed_mps: 0.555556\n    service_state_topic: /parking/private/apriltag/service_state\n    slowdown_start_distance_m: 1.443\n    slowdown_start_remaining_distance_m: 0.6\n    slowdown_start_tag_distance_m: 0.8\n    status_rate_hz: 2.0\n    status_topic: /parking/private/apriltag/status\n    stop_when_charging: true\n    tag_pose_topic: /perception/apriltag_parking_detector/tag_pose\n    tag_timeout_s: 0.5\n    tag_wait_timeout_s: 60.0\n    translation_stop_tag_distance_m: 0.4\n    use_sim_time: false\n    voice_state_topic: /voice/voice_announcer/state\n\n",
+      "stderr": "1793618934.193340 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n"
+    },
+    "/parking/reverse_parking_controller": {
+      "exit_code": 0,
+      "stdout": "/parking/reverse_parking_controller:\n  ros__parameters:\n    automatically_select_reverse_approach_yaw: false\n    charging_wait_timeout_s: 45.0\n    command_topic: /parking/private/reverse/cmd_vel\n    complete_without_charging: true\n    control_rate_hz: 10.0\n    diagnostics_topic: /parking/private/reverse/diagnostics\n    drop_zone_goal_topic: /planning/drop_zone_goal_raw\n    drop_zone_id: drop_zone\n    drop_zones_yaml: /home/hong/camrod_ws/src/camrod_bringup/config/map/drop_zones.yaml\n    final_approach_speed_mps: 0.138889\n    heading_proportional_gain: 0.8\n    idle_rate_hz: 1.0\n    lateral_proportional_gain: -0.25\n    maximum_angular_speed_radps: 0.22\n    maximum_reverse_distance_m: 5.0\n    operation_topic: /parking/private/reverse/operation\n    path_topic: /parking/reverse_parking_controller/path_ros\n    platform_status_topic: /platform/status\n    pose_timeout_s: 2.0\n    qos_overrides:\n      /parameter_events:\n        publisher:\n          depth: 1000\n          durability: volatile\n          history: keep_last\n          reliability: reliable\n    require_station_on_reverse_axis: true\n    reverse_speed_mps: 0.444444\n    reverse_timeout_s: 30.0\n    service_state_topic: /parking/private/reverse/service_state\n    slowdown_start_remaining_distance_m: 0.3\n    start_yaw_tolerance_deg: 7.5\n    station_axis_tolerance_m: 0.25\n    station_x_m: 0.0\n    station_y_m: 0.0\n    station_yaw_deg: 0.0\n    station_yaw_represents_reverse_axis: true\n    status_rate_hz: 1.0\n    status_topic: /parking/private/reverse/status\n    stop_when_charging: true\n    use_drop_zone_pose_as_station: true\n    use_sim_time: false\n    vehicle_pose_topic: /localization/pose\n\n",
+      "stderr": "1793618935.725568 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n"
+    },
+    "/control/drop_zone_maneuver_controller": {
+      "exit_code": 0,
+      "stdout": "/control/drop_zone_maneuver_controller:\n  ros__parameters:\n    allow_fixed_distance_fallback: false\n    allow_unstamped_pose_fallback: false\n    automatically_select_reverse_approach_yaw: false\n    command_topic: /control/cmd_vel_raw\n    control_rate_hz: 10.0\n    diagnostics_topic: /system/diagnostics\n    drop_zone_goal_topic: /planning/drop_zone_goal_raw\n    drop_zone_id: drop_zone\n    drop_zones_yaml: /home/hong/camrod_ws/src/camrod_bringup/config/map/drop_zones.yaml\n    enable_auto_alignment: true\n    exit_complete_topic: /control/drop_zone/exit_complete\n    exit_distance_m: 1.2\n    exit_path_topic: /control/drop_zone_maneuver_controller/exit_path_ros\n    exit_position_tolerance_m: 0.2\n    exit_speed_mps: 0.444444\n    exit_target_max_distance_m: 8.0\n    exit_target_max_lateral_m: 1.0\n    exit_target_min_distance_m: 0.3\n    exit_target_min_forward_m: 0.1\n    exit_timeout_s: 30.0\n    idle_rate_hz: 1.0\n    lanelet_pose_topic: /planning/lanelet_pose\n    maximum_angular_speed_radps: 0.35\n    operation_topic: /control/drop_zone_maneuver_controller/operation\n    parking_approach_goal_max_station_distance_m: 8.0\n    parking_approach_goal_topic: /planning/goal_pose_snapped\n    parking_approach_maximum_correction_m: 0.75\n    parking_approach_maximum_speed_mps: 0.2\n    parking_approach_minimum_speed_mps: 0.06\n    parking_approach_path_topic: /control/drop_zone_maneuver_controller/parking_approach_path_ros\n    parking_approach_position_tolerance_m: 0.05\n    parking_approach_proportional_gain: 0.8\n    parking_approach_settle_hold_s: 0.5\n    parking_approach_timeout_s: 12.0\n    parking_operation_topic: /parking/operation\n    planning_state_topic: /planning/state_machine/state\n    platform_status_topic: /platform/status\n    pose_timeout_s: 2.0\n    qos_overrides:\n      /parameter_events:\n        publisher:\n          depth: 1000\n          durability: volatile\n          history: keep_last\n          reliability: reliable\n    require_exact_parking_approach_for_auto: true\n    require_lanelet_exit_target: true\n    return_mission_key: drop_zone\n    return_scenario_id: 2\n    service_state_topic: /service/state\n    station_x_m: 0.0\n    station_y_m: 0.0\n    station_yaw_deg: 0.0\n    station_yaw_represents_reverse_axis: true\n    status_rate_hz: 1.0\n    status_topic: /control/drop_zone_maneuver_controller/status\n    use_drop_zone_pose_as_station: true\n    use_sim_time: false\n    vehicle_pose_topic: /localization/pose\n    yaw_proportional_gain: 1.2\n    yaw_settle_hold_s: 1.0\n    yaw_settle_max_rate_degps: 3.0\n    yaw_tolerance_deg: 5.0\n\n",
+      "stderr": "1793618937.053623 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n"
+    }
+  }
+}

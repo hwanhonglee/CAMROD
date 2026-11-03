@@ -1,0 +1,159 @@
+{
+  "authority": "READ_ONLY_NO_ACTOR_NO_PUBLISH_NO_CONTROL",
+  "observer_use_sim_time": false,
+  "duration_s": 3,
+  "clock_contract": {
+    "raw_lidar": "carla_sim",
+    "filtered_lidar": "wall",
+    "radar_grid": "wall",
+    "guard_grid": "wall",
+    "gate": "wall",
+    "raw_radar_front1": "carla_sim",
+    "raw_radar_front2": "carla_sim",
+    "raw_radar_left1": "carla_sim",
+    "raw_radar_left2": "carla_sim",
+    "raw_radar_right1": "carla_sim",
+    "raw_radar_right2": "carla_sim",
+    "raw_radar_rear": "carla_sim",
+    "range_front1": "wall",
+    "range_front2": "wall",
+    "range_left1": "wall",
+    "range_left2": "wall",
+    "range_right1": "wall",
+    "range_right2": "wall",
+    "range_rear": "wall"
+  },
+  "topics": {
+    "raw_lidar": {
+      "topic": "/carla/ego_vehicle/lidar_front",
+      "messages": 29,
+      "last_received_monotonic_s": 22382.480329887,
+      "last_timing": {
+        "source_clock": "carla_sim",
+        "header_stamp_s": 67.325277377,
+        "wall_clock_s": 1793617277.5856016,
+        "carla_clock_s": 67.325277377,
+        "carla_clock_receipt_age_s": 0.017093668997404166,
+        "source_age_s": 0.0
+      },
+      "frame": "ego_vehicle/lidar_front",
+      "source_age_range_s": [
+        0.0,
+        0.0
+      ],
+      "receipt_age_s": 0.023213395001221215
+    },
+    "raw_radar_front1": {
+      "topic": "/carla/ego_vehicle/radar_front1",
+      "messages": 29,
+      "last_received_monotonic_s": 22382.481081398,
+      "last_timing": {
+        "source_clock": "carla_sim",
+        "header_stamp_s": 67.325277377,
+        "wall_clock_s": 1793617277.5863543,
+        "carla_clock_s": 67.325277377,
+        "carla_clock_receipt_age_s": 0.017847454000730067,
+        "source_age_s": 0.0
+      },
+      "frame": "ego_vehicle/radar_front1",
+      "source_age_range_s": [
+        0.0,
+        0.0
+      ],
+      "receipt_age_s": 0.0224639180014492
+    },
+    "range_front1": {
+      "topic": "/sensing/radar/front1/range_ros",
+      "messages": 29,
+      "last_received_monotonic_s": 22382.481398516,
+      "last_timing": {
+        "source_clock": "wall",
+        "header_stamp_s": 1793617277.5863023,
+        "wall_clock_s": 1793617277.5866725,
+        "carla_clock_s": 67.325277377,
+        "carla_clock_receipt_age_s": 0.0181658100009372,
+        "source_age_s": 0.00037026405334472656
+      },
+      "frame": "radar_front1_link",
+      "source_age_range_s": [
+        0.00023365020751953125,
+        0.0014171600341796875
+      ],
+      "receipt_age_s": 0.022148479001771193
+    },
+    "filtered_lidar": {
+      "topic": "/sensing/lidar/points_filtered",
+      "messages": 29,
+      "last_received_monotonic_s": 22382.483289269,
+      "last_timing": {
+        "source_clock": "wall",
+        "header_stamp_s": 1793617277.5856433,
+        "wall_clock_s": 1793617277.5885634,
+        "carla_clock_s": 67.325277377,
+        "carla_clock_receipt_age_s": 0.02005569600078161,
+        "source_age_s": 0.0029201507568359375
+      },
+      "frame": "lidar_link",
+      "source_age_range_s": [
+        0.0019114017486572266,
+        0.004847526550292969
+      ],
+      "receipt_age_s": 0.020258795000700047
+    },
+    "guard_grid": {
+      "topic": "/sensing/cost_grid/lidar_front_guard",
+      "messages": 29,
+      "last_received_monotonic_s": 22382.407482266,
+      "last_timing": {
+        "source_clock": "wall",
+        "header_stamp_s": 1793617277.3701308,
+        "wall_clock_s": 1793617277.5127547,
+        "carla_clock_s": 67.225277376,
+        "carla_clock_receipt_age_s": 0.049556032001419226,
+        "source_age_s": 0.1426239013671875
+      },
+      "frame": "map",
+      "exact_stamp_tf": {
+        "available": true,
+        "stamp_s": 1793617277.3701308
+      },
+      "latest_tf": {
+        "stamp_s": 1793617277.4810612,
+        "wall_age_s": 0.031804800033569336
+      },
+      "source_age_range_s": [
+        0.009560108184814453,
+        0.1426239013671875
+      ],
+      "receipt_age_s": 0.09606737899957807
+    },
+    "radar_grid": {
+      "topic": "/sensing/cost_grid/radar",
+      "messages": 29,
+      "last_received_monotonic_s": 22382.417822899,
+      "last_timing": {
+        "source_clock": "wall",
+        "header_stamp_s": 1793617277.4786143,
+        "wall_clock_s": 1793617277.5230951,
+        "carla_clock_s": 67.275277376,
+        "carla_clock_receipt_age_s": 0.009708043999125948,
+        "source_age_s": 0.04448080062866211
+      },
+      "frame": "map",
+      "exact_stamp_tf": {
+        "available": true,
+        "stamp_s": 1793617277.4786143
+      },
+      "latest_tf": {
+        "stamp_s": 1793617277.4810612,
+        "wall_age_s": 0.04217052459716797
+      },
+      "source_age_range_s": [
+        0.04448080062866211,
+        0.1071157455444336
+      ],
+      "receipt_age_s": 0.08572809300312656
+    }
+  },
+  "missing_topics": []
+}

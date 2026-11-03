@@ -1,0 +1,25 @@
+{
+  "utc": "2026-11-03T07:55:07.730570+00:00",
+  "http_status": 400,
+  "response": {
+    "success": false,
+    "intent": "recall",
+    "site": "B7",
+    "error": "battery_below_mission_minimum",
+    "battery_percentage": 34,
+    "minimum_battery_percentage": 35,
+    "message": "battery 34% is below mission minimum 35%"
+  },
+  "before": {
+    "battery_percentage": 34,
+    "platform_is_charging": true,
+    "mission_dispatch_generation": 0,
+    "mission_dispatch_active": false
+  },
+  "after": {
+    "battery_percentage": 34,
+    "platform_is_charging": true,
+    "mission_dispatch_generation": 0,
+    "mission_dispatch_active": false
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "utc": "2026-11-03T07:52:26.023980+00:00",
+  "monotonic_s": 97450.918708199,
+  "fraction": 0.34,
+  "exit_code": 0,
+  "stdout": "publisher: beginning loop\npublishing #1: std_msgs.msg.Float32(data=0.34)\n\n",
+  "stderr": "1793692348.300647 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n"
+}

@@ -1,0 +1,4 @@
+1793617462.258951 [188]       ros2: selected interface "lo" is not multicast-capable: disabling multicast
+publisher: beginning loop
+publishing #1: std_msgs.msg.Float32(data=0.8)
+

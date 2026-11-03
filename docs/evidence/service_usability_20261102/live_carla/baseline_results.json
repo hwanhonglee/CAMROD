@@ -1,0 +1,140 @@
+{
+  "source": "docs/evidence/service_usability_20261102/live_carla/nearfield_actual_01.jsonl",
+  "source_sha256": "509b7f792008c43977389d5b85d2cdb94a1e16bec3f7f78d37bb0ce6e1f62b22",
+  "evidence_type": "ACTUAL_CARLA_SAVED_SAMPLE_COUNTS_NOT_SCENE_RENDER",
+  "baseline_samples": 292,
+  "baseline_first_utc": "2026-11-02T11:16:55.637320+00:00",
+  "baseline_last_utc": "2026-11-02T11:17:55.548760+00:00",
+  "carla_frames": [
+    19293,
+    20430
+  ],
+  "completed": false,
+  "measured_placements": [],
+  "actor_receipts": [
+    {
+      "utc": "2026-11-02T11:17:55.644425+00:00",
+      "event": "owned_actor_spawned",
+      "actor_id": 18,
+      "role": "camrod_sensor_probe_bbfa077fa1ad",
+      "ground_label": "Roads",
+      "ground_z": -0.9365975856781006
+    },
+    {
+      "utc": "2026-11-02T11:17:56.653900+00:00",
+      "event": "owned_actor_removed",
+      "actor_id": 18
+    }
+  ],
+  "exact_ground_rejection_retained": false,
+  "interpretation": "Retrospective fresh high-cost-cell HIT/NO_HIT; NO_HIT is not proof of free space, final-gate isolation or successful stopping.",
+  "modes": {
+    "radar_only": {
+      "HIT": 0,
+      "NO_HIT": 291,
+      "UNAVAILABLE": 1
+    },
+    "guard_only": {
+      "HIT": 0,
+      "NO_HIT": 184,
+      "UNAVAILABLE": 108
+    },
+    "both": {
+      "HIT": 0,
+      "NO_HIT": 184,
+      "UNAVAILABLE": 108
+    }
+  },
+  "topics": {
+    "radar_grid": {
+      "samples_with_metrics": 291,
+      "error_samples": 0,
+      "point_count_range": null,
+      "occupied_grid_cell_range": [
+        0,
+        0
+      ],
+      "unknown_grid_cell_range": [
+        14319,
+        14319
+      ],
+      "source_age_range_s": [
+        0.04271960258483887,
+        0.20277094841003418
+      ]
+    },
+    "guard_grid": {
+      "samples_with_metrics": 184,
+      "error_samples": 107,
+      "point_count_range": null,
+      "occupied_grid_cell_range": [
+        0,
+        0
+      ],
+      "unknown_grid_cell_range": [
+        6400,
+        6400
+      ],
+      "source_age_range_s": [
+        0.008431673049926758,
+        0.2335047721862793
+      ]
+    },
+    "raw_lidar": {
+      "samples_with_metrics": 291,
+      "error_samples": 0,
+      "point_count_range": [
+        2736,
+        2736
+      ],
+      "occupied_grid_cell_range": null,
+      "unknown_grid_cell_range": null,
+      "source_age_range_s": [
+        0.0,
+        0.10000000200000159
+      ]
+    },
+    "filtered_lidar": {
+      "samples_with_metrics": 291,
+      "error_samples": 0,
+      "point_count_range": [
+        0,
+        0
+      ],
+      "occupied_grid_cell_range": null,
+      "unknown_grid_cell_range": null,
+      "source_age_range_s": [
+        0.002057790756225586,
+        0.1728968620300293
+      ]
+    },
+    "raw_radar_front1": {
+      "samples_with_metrics": 291,
+      "error_samples": 0,
+      "point_count_range": [
+        0,
+        0
+      ],
+      "occupied_grid_cell_range": null,
+      "unknown_grid_cell_range": null,
+      "source_age_range_s": [
+        0.0,
+        0.10000000200000159
+      ]
+    },
+    "raw_radar_front2": {
+      "samples_with_metrics": 291,
+      "error_samples": 0,
+      "point_count_range": [
+        0,
+        0
+      ],
+      "occupied_grid_cell_range": null,
+      "unknown_grid_cell_range": null,
+      "source_age_range_s": [
+        0.0,
+        0.10000000200000159
+      ]
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "utc": "2026-11-02T11:37:23.151007+00:00",
+  "stdout": "Tag-only test scene and unchanged source files verified from APPLIED receipt\nType: std_msgs/msg/Float32\n\nPublisher count: 0\n\nSubscription count: 2\n\nNode name: carla_battery_evidence_observer\nNode namespace: /\nTopic type: std_msgs/msg/Float32\nEndpoint type: SUBSCRIPTION\nGID: 01.10.61.45.4b.86.bd.85.aa.32.ad.87.00.00.15.04.00.00.00.00.00.00.00.00\nQoS profile:\n  Reliability: BEST_EFFORT\n  History (Depth): KEEP_LAST (100)\n  Durability: VOLATILE\n  Lifespan: Infinite\n  Deadline: Infinite\n  Liveliness: AUTOMATIC\n  Liveliness lease duration: Infinite\n\nNode name: carla_platform_heartbeat\nNode namespace: /\nTopic type: std_msgs/msg/Float32\nEndpoint type: SUBSCRIPTION\nGID: 01.10.83.f6.bf.dd.0f.4b.5c.a8.03.15.00.00.17.04.00.00.00.00.00.00.00.00\nQoS profile:\n  Reliability: RELIABLE\n  History (Depth): KEEP_LAST (10)\n  Durability: VOLATILE\n  Lifespan: Infinite\n  Deadline: Infinite\n  Liveliness: AUTOMATIC\n  Liveliness lease duration: Infinite\n\n",
+  "stderr": ""
+}

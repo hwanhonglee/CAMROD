@@ -1,0 +1,8 @@
+{
+  "utc": "2026-11-03T08:13:28.394411+00:00",
+  "fraction": 0.35,
+  "exit_code": 0,
+  "stdout": "publisher: beginning loop\npublishing #1: std_msgs.msg.Float32(data=0.35)\n\n",
+  "stderr": "1793693607.464050 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n",
+  "graph": "Type: std_msgs/msg/Float32\n\nPublisher count: 0\n\nSubscription count: 2\n\nNode name: carla_platform_heartbeat\nNode namespace: /\nTopic type: std_msgs/msg/Float32\nEndpoint type: SUBSCRIPTION\nGID: 01.10.0f.b7.ad.84.ec.83.00.63.3e.61.00.00.17.04.00.00.00.00.00.00.00.00\nQoS profile:\n  Reliability: RELIABLE\n  History (Depth): KEEP_LAST (10)\n  Durability: VOLATILE\n  Lifespan: Infinite\n  Deadline: Infinite\n  Liveliness: AUTOMATIC\n  Liveliness lease duration: Infinite\n\nNode name: carla_battery_evidence_observer\nNode namespace: /\nTopic type: std_msgs/msg/Float32\nEndpoint type: SUBSCRIPTION\nGID: 01.10.ba.a7.16.d2.a3.f7.00.59.71.e7.00.00.15.04.00.00.00.00.00.00.00.00\nQoS profile:\n  Reliability: BEST_EFFORT\n  History (Depth): KEEP_LAST (100)\n  Durability: VOLATILE\n  Lifespan: Infinite\n  Deadline: Infinite\n  Liveliness: AUTOMATIC\n  Liveliness lease duration: Infinite\n\n"
+}

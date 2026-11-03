@@ -1,0 +1,3700 @@
+{
+  "schema": "camrod.live_carla.recall_return.v1",
+  "started_utc": "2026-11-03T08:20:02.449153+00:00",
+  "status": "RECALL_TWO_CONFIRMATIONS_RETURN_PARKED_OBSERVED",
+  "site": "B7",
+  "generation": 1793693264276002,
+  "confirmations": [
+    {
+      "utc": "2026-11-03T08:21:23.785471+00:00",
+      "accepted": true,
+      "action": "usage_complete",
+      "frame": {
+        "usage_complete": true,
+        "site": "B7",
+        "mission_generation": 1793693264276002,
+        "recall_final_return": false
+      },
+      "source": "robot_ui:usage_complete",
+      "expected_ros_source": "robot_ui:usage_complete:recall_loading_complete",
+      "context": {
+        "mission_identity": {
+          "site": "B7",
+          "owner": "robot",
+          "intent": "recall",
+          "generation": 1793693264276002
+        },
+        "service_state": 8,
+        "site_phase": "WAIT_RETURN",
+        "final_return": false,
+        "controller_request_count_before": 0,
+        "ui_request_count_before": 0
+      },
+      "transport": "visible_operator_page_websocket_via_cdp_input",
+      "interactions": [
+        {
+          "stage": "arrival complete and Return",
+          "selector": "[data-ui=\"operator-arrival-return-confirm\"]",
+          "x": 454.996,
+          "y": 602.156,
+          "transport": "CDP.Input.dispatchMouseEvent",
+          "hit_test": true,
+          "render_settled": true,
+          "stable_for_s": 0.30710787800489925
+        }
+      ]
+    },
+    {
+      "utc": "2026-11-03T08:21:59.644420+00:00",
+      "accepted": true,
+      "action": "usage_complete",
+      "frame": {
+        "usage_complete": true,
+        "site": "B7",
+        "mission_generation": 1793693264276002,
+        "recall_final_return": true
+      },
+      "source": "robot_ui:usage_complete",
+      "expected_ros_source": "robot_ui:usage_complete:recall_final_return:site=B7:g=1793693264276002",
+      "context": {
+        "mission_identity": {
+          "site": "B7",
+          "owner": "robot",
+          "intent": "recall",
+          "generation": 1793693264276002
+        },
+        "service_state": 8,
+        "site_phase": "RECALL_RETURN_WAIT",
+        "final_return": true,
+        "controller_request_count_before": 0,
+        "ui_request_count_before": 0
+      },
+      "transport": "visible_operator_page_websocket_via_cdp_input",
+      "interactions": [
+        {
+          "stage": "arrival complete and Return",
+          "selector": "[data-ui=\"operator-arrival-return-confirm\"]",
+          "x": 454.996,
+          "y": 585.516,
+          "transport": "CDP.Input.dispatchMouseEvent",
+          "hit_test": true,
+          "render_settled": true,
+          "stable_for_s": 0.30711286200676113
+        }
+      ]
+    }
+  ],
+  "photos": [
+    {
+      "utc": "2026-11-03T08:20:02.474380+00:00",
+      "label": "phase",
+      "service_state": "RECALL_TO_SITE_ROAD",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/01_phase.png",
+        "bytes": 409497
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n2.8\nkm/h\n로봇 기준 주행 속도\n주행 상태\n호출 위치로 이동 중\n\nB7 호출 위치로 이동하고 있습니다.\n\n목적지\nB7\n센서 상태\n3/3 수신\n외관 보기\n주행 경로\n전방 인지 수신 대기\n수신 Lanelet 지도 · 실제 경로 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n우측 경로로 진행\n약 16m 앞 · 수신한 경로 형상 기준\n남은 거리\n54m\n예상 소요\n2분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:14.311276+00:00",
+      "label": "phase",
+      "service_state": "RECALL_TO_SITE_ROAD",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/02_phase.png",
+        "bytes": 493918
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.1\nkm/h\n로봇 기준 주행 속도\n주행 상태\n호출 위치로 이동 중\n\nB7 호출 위치로 이동하고 있습니다.\n\n목적지\nB7\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB6\n외관 보기\n주행 경로\n전방 인지 수신 대기\n수신 Lanelet 지도 · 실제 경로 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로를 따라 진행\n전방 수신 경로 기준\n남은 거리\n0m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:16.136562+00:00",
+      "label": "phase",
+      "service_state": "RECALL_TO_SITE_ROAD",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/03_phase.png",
+        "bytes": 489841
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n호출 위치로 이동 중\n\nB7 호출 위치로 이동하고 있습니다.\n\n목적지\nB7\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB6\n외관 보기\n주행 경로\n전방 인지 수신 대기\n수신 Lanelet 지도 · 실제 경로 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로를 따라 진행\n전방 수신 경로 기준\n남은 거리\n0m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:17.427497+00:00",
+      "label": "phase",
+      "service_state": "GUEST_LOADING_WAIT",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/04_phase.png",
+        "bytes": 731228
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n35%\n2026년 11월 3일 화\n오후 05:21:17\n시스템\n시스템 정상\n임무\n도착\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 35%\n호출 서비스\n\nB7\n\n도로 측 대기점에 도착했습니다.\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작\n이번 서비스\n60.6 m\n상세 보기 ›\n호출 목적지 선택\n\n텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.\n\n◀\nB7\nON\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n짐 정리를 마친 후,\n[정리 완료 · 회전 시작] 버튼을 눌러주세요\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n60.6 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7\nON",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return-confirm",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:18.278633+00:00",
+      "label": "phase",
+      "service_state": "GUEST_LOADING_WAIT",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/05_phase.png",
+        "bytes": 730778
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n35%\n2026년 11월 3일 화\n오후 05:21:18\n시스템\n시스템 정상\n임무\n도착\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 35%\n호출 서비스\n\nB7\n\n도로 측 대기점에 도착했습니다.\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작\n이번 서비스\n60.6 m\n상세 보기 ›\n호출 목적지 선택\n\n텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.\n\n◀\nB7\nON\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n짐 정리를 마친 후,\n[정리 완료 · 회전 시작] 버튼을 눌러주세요\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n60.6 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7\nON",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return-confirm",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:23.146043+00:00",
+      "label": "phase",
+      "service_state": "GUEST_LOADING_WAIT",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/06_phase.png",
+        "bytes": 730789
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n35%\n2026년 11월 3일 화\n오후 05:21:22\n시스템\n시스템 정상\n임무\n도착\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 35%\n호출 서비스\n\nB7\n\n도로 측 대기점에 도착했습니다.\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작\n이번 서비스\n60.7 m\n상세 보기 ›\n호출 목적지 선택\n\n텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.\n\n◀\nB7\nON\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n짐 정리를 마친 후,\n[정리 완료 · 회전 시작] 버튼을 눌러주세요\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n60.7 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7\nON",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return-confirm",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:23.462798+00:00",
+      "label": "before_first",
+      "service_state": "GUEST_LOADING_WAIT",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/07_before_first.png",
+        "bytes": 730789
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n35%\n2026년 11월 3일 화\n오후 05:21:23\n시스템\n시스템 정상\n임무\n도착\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 35%\n호출 서비스\n\nB7\n\n도로 측 대기점에 도착했습니다.\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작\n이번 서비스\n60.7 m\n상세 보기 ›\n호출 목적지 선택\n\n텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.\n\n◀\nB7\nON\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n짐 정리를 마친 후,\n[정리 완료 · 회전 시작] 버튼을 눌러주세요\n\n사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.\n\n정리 완료 · 회전 시작",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n60.7 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7\nON",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return-confirm",
+            "text": "정리 완료 · 회전 시작",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:25.021450+00:00",
+      "label": "phase",
+      "service_state": "RETURN_WITH_CARGO",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/08_phase.png",
+        "bytes": 497327
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n짐을 싣고 복귀 중\n\n짐을 싣고 출발지로 복귀하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB6\n외관 보기\n사이트 이탈 동작 중 · 복귀 경로 준비\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n사이트 이탈 동작 중 · 복귀 경로 준비\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:25.958982+00:00",
+      "label": "phase",
+      "service_state": "RETURN_WITH_CARGO",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/09_phase.png",
+        "bytes": 497262
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n짐을 싣고 복귀 중\n\n짐을 싣고 출발지로 복귀하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB6\n외관 보기\n사이트 이탈 동작 중 · 복귀 경로 준비\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n사이트 이탈 동작 중 · 복귀 경로 준비\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:39.489647+00:00",
+      "label": "phase",
+      "service_state": "RETURN_WITH_CARGO",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/10_phase.png",
+        "bytes": 497777
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n짐을 싣고 복귀 중\n\n짐을 싣고 출발지로 복귀하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB6\n외관 보기\n사이트 이탈 동작 중 · 복귀 경로 준비\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n사이트 이탈 동작 중 · 복귀 경로 준비\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:40.332603+00:00",
+      "label": "phase",
+      "service_state": "RETURN_WITH_CARGO",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/11_phase.png",
+        "bytes": 497671
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.7\nkm/h\n로봇 기준 주행 속도\n주행 상태\n짐을 싣고 복귀 중\n\n짐을 싣고 출발지로 복귀하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB6\n외관 보기\n사이트 이탈 동작 중 · 복귀 경로 준비\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n사이트 이탈 동작 중 · 복귀 경로 준비\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:46.206494+00:00",
+      "label": "phase",
+      "service_state": "RETURN_WITH_CARGO",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/12_phase.png",
+        "bytes": 498069
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n35%\n라이트\n운행 정지\n서비스 화면\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n짐을 싣고 복귀 중\n\n짐을 싣고 출발지로 복귀하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\nB1\nB2\nB3\nB4\nB5\nB7\n외관 보기\n사이트 이탈 동작 중 · 복귀 경로 준비\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n사이트 이탈 동작 중 · 복귀 경로 준비\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "라이트",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:21:59.308346+00:00",
+      "label": "before_final",
+      "service_state": "GUEST_LOADING_WAIT",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/13_before_final.png",
+        "bytes": 806636
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n35%\n2026년 11월 3일 화\n오후 05:21:59\n시스템\n시스템 정상\n임무\n도착\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 35%\n호출 서비스\n\nB7\n\n사이트 안에서 회전 완료 · 정차 중\n\n짐을 모두 실었다면 복귀를 눌러 주세요.\n\n짐 싣기 완료 · 복귀\n이번 서비스\n63.6 m\n상세 보기 ›\n호출 목적지 선택\n\n텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.\n\n◀\nB7\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n짐 싣기를 모두 마친 후,\n[짐 싣기 완료 · 복귀] 버튼을 눌러주세요\n\n짐을 모두 실었다면 복귀를 눌러 주세요.\n\n짐 싣기 완료 · 복귀",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return",
+            "text": "짐 싣기 완료 · 복귀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n63.6 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return-confirm",
+            "text": "짐 싣기 완료 · 복귀",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-03T08:23:35.142188+00:00",
+      "label": "final_reverse_parked",
+      "service_state": "DROP_ZONE_WAIT",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/14_final_reverse_parked.png",
+        "bytes": 542879
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\n주행 지도 보기\nWIFI\n35%\n2026년 11월 3일 화\n오후 05:23:35\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n대기·충전 장소 주차 완료\n배터리\n임무 가능 · 배터리 35%\n실증 운행 현황\n2026. 11. 03. 오후 05:23 기준\n상세 보기 ›\n최근 서비스\n126.8 m\n오늘 누적\n383.1 m\n오늘 완료\n3회\n전체 누적\n383.1 m · 3회\n서비스 선택\n로봇 이용 방법\n시설 안내\n탐방로",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "open-idle-navigation-map",
+            "text": "주행 지도 보기",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "실증 운행 현황\n2026. 11. 03. 오후 05:23 기준\n상세 보기 ›\n최근 서비스\n126.8 m\n오늘 누적\n383.1 m\n오늘 완료\n3회\n전체 누적\n383.1 m · 3회",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-open-destination",
+            "text": "서비스 선택",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "로봇 이용 방법",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "시설 안내",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "탐방로",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    }
+  ],
+  "latest": {
+    "utc": "2026-11-03T08:23:35.141099+00:00",
+    "monotonic_s": 99320.035831943,
+    "/ui/state": {
+      "engaged": false,
+      "ready": true,
+      "headlight": false,
+      "operation_mode": "STOP",
+      "ready_message": "ready",
+      "module_states": [
+        {
+          "name": "camera_checker",
+          "level": 0,
+          "message": "OK (4.7 fps)"
+        },
+        {
+          "name": "control",
+          "level": 0,
+          "message": "phase=DONE site=camping_site_7 service_mode=turnaround recall_turnaround_return=True battery_urgent_return=False return_source= crab_speed_mps=0.67 return_published=True return_ack=True"
+        },
+        {
+          "name": "cost_grid_checker",
+          "level": 0,
+          "message": "OK (10.0 Hz, unknown=100%)"
+        },
+        {
+          "name": "final_parking",
+          "level": 0,
+          "message": "exactly one alternative graph ok"
+        },
+        {
+          "name": "gnss_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, fix=0)"
+        },
+        {
+          "name": "gpu_checker",
+          "level": 0,
+          "message": "GPU0 OK (NVIDIA GeForce RTX 3060)"
+        },
+        {
+          "name": "hw_checker",
+          "level": 0,
+          "message": "CPU 35.6%"
+        },
+        {
+          "name": "imu_checker",
+          "level": 0,
+          "message": "OK (10 Hz)"
+        },
+        {
+          "name": "lidar_checker",
+          "level": 0,
+          "message": "OK (9.6 Hz, 0 pts)"
+        },
+        {
+          "name": "localization",
+          "level": 0,
+          "message": "module graph ok"
+        },
+        {
+          "name": "localization_gnss_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, cov_trace=0.200)"
+        },
+        {
+          "name": "localization_init_checker",
+          "level": 0,
+          "message": "Drop zone init check disabled"
+        },
+        {
+          "name": "localization_lanelet_checker",
+          "level": 0,
+          "message": "OK (20 Hz, cov_trace=0.3400)"
+        },
+        {
+          "name": "localization_mode_checker",
+          "level": 0,
+          "message": "NORMAL - localization healthy"
+        },
+        {
+          "name": "localization_pose_checker",
+          "level": 0,
+          "message": "OK (20 Hz, cov_trace=0.0208)"
+        },
+        {
+          "name": "localization_source_checker",
+          "level": 0,
+          "message": "Primary EKF filter active"
+        },
+        {
+          "name": "map",
+          "level": 0,
+          "message": "module graph ok"
+        },
+        {
+          "name": "map_cost_grid_checker",
+          "level": 0,
+          "message": "OK (1.0 Hz, unknown=0%)"
+        },
+        {
+          "name": "parking",
+          "level": 0,
+          "message": "parking_method=reverse battery_percent=35.000000 charging_required=false forced=false attempt=9 phase=PARKED"
+        },
+        {
+          "name": "perception",
+          "level": 0,
+          "message": "module graph ok"
+        },
+        {
+          "name": "perception_obstacle_checker",
+          "level": 0,
+          "message": "OK (4.7 Hz, 0 pts)"
+        },
+        {
+          "name": "planning",
+          "level": 0,
+          "message": "module graph ok"
+        },
+        {
+          "name": "planning_costmap_checker",
+          "level": 0,
+          "message": "OK (1.7 Hz, 0.6s ago)"
+        },
+        {
+          "name": "planning_lifecycle_checker",
+          "level": 0,
+          "message": "/planning/bt_navigator ACTIVE"
+        },
+        {
+          "name": "planning_nav_status_checker",
+          "level": 0,
+          "message": "idle: SUCCEEDED"
+        },
+        {
+          "name": "planning_path_checker",
+          "level": 0,
+          "message": "navigation idle"
+        },
+        {
+          "name": "platform",
+          "level": 0,
+          "message": "module graph ok"
+        },
+        {
+          "name": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)"
+        },
+        {
+          "name": "sensing",
+          "level": 0,
+          "message": "module graph ok"
+        },
+        {
+          "name": "system",
+          "level": 0,
+          "message": "ok"
+        },
+        {
+          "name": "velocity_converter_checker",
+          "level": 0,
+          "message": "OK (19.0 Hz)"
+        },
+        {
+          "name": "wheel_odometry_checker",
+          "level": 0,
+          "message": "OK (19 Hz, vx=0.00 m/s)"
+        }
+      ],
+      "diagnostics": [
+        {
+          "name": "planning_lifecycle_checker: /planning/lifecycle/planning/planner_server",
+          "module": "planning_lifecycle_checker",
+          "level": 0,
+          "message": "/planning/planner_server ACTIVE",
+          "values": [
+            {
+              "key": "node",
+              "value": "/planning/planner_server"
+            },
+            {
+              "key": "state",
+              "value": "active"
+            },
+            {
+              "key": "state_id",
+              "value": "3"
+            },
+            {
+              "key": "polled_sec_ago",
+              "value": "0.47"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/final_parking",
+          "module": "final_parking",
+          "level": 0,
+          "message": "exactly one alternative graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "final_parking"
+            },
+            {
+              "key": "module",
+              "value": "final_parking"
+            },
+            {
+              "key": "checked_alternatives",
+              "value": "parking_dispatcher,reverse_parking_controller,apriltag_parking_controller"
+            },
+            {
+              "key": "healthy_alternatives",
+              "value": "parking_dispatcher"
+            },
+            {
+              "key": "failed_alternatives",
+              "value": "reverse_parking_controller(publishers=/parking/reverse_parking_controller/status publishers=0),apriltag_parking_controller(publishers=/parking/apriltag_parking_controller/status publishers=0)"
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            },
+            {
+              "key": "selected_alternative",
+              "value": "parking_dispatcher"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/platform",
+          "module": "platform",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "platform"
+            },
+            {
+              "key": "module",
+              "value": "platform"
+            },
+            {
+              "key": "required_nodes",
+              "value": "2"
+            },
+            {
+              "key": "required_topics",
+              "value": "4"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/planning",
+          "module": "planning",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "planning"
+            },
+            {
+              "key": "module",
+              "value": "planning"
+            },
+            {
+              "key": "required_nodes",
+              "value": "12"
+            },
+            {
+              "key": "required_topics",
+              "value": "6"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/perception",
+          "module": "perception",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "perception"
+            },
+            {
+              "key": "module",
+              "value": "perception"
+            },
+            {
+              "key": "required_nodes",
+              "value": "1"
+            },
+            {
+              "key": "required_topics",
+              "value": "1"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/localization",
+          "module": "localization",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "localization"
+            },
+            {
+              "key": "module",
+              "value": "localization"
+            },
+            {
+              "key": "required_nodes",
+              "value": "5"
+            },
+            {
+              "key": "required_topics",
+              "value": "9"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/sensing",
+          "module": "sensing",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "sensing"
+            },
+            {
+              "key": "module",
+              "value": "sensing"
+            },
+            {
+              "key": "required_nodes",
+              "value": "4"
+            },
+            {
+              "key": "required_topics",
+              "value": "20"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/map",
+          "module": "map",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "map"
+            },
+            {
+              "key": "module",
+              "value": "map"
+            },
+            {
+              "key": "required_nodes",
+              "value": "2"
+            },
+            {
+              "key": "required_topics",
+              "value": "2"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/nodes",
+          "module": "system",
+          "level": 0,
+          "message": "ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "system"
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/topics",
+          "module": "system",
+          "level": 0,
+          "message": "ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "system"
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "map_cost_grid_checker: /map/cost_grid",
+          "module": "map_cost_grid_checker",
+          "level": 0,
+          "message": "OK (1.0 Hz, unknown=0%)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "1.00"
+            },
+            {
+              "key": "expected_hz",
+              "value": "0.0"
+            },
+            {
+              "key": "unknown_ratio_pct",
+              "value": "0.0"
+            },
+            {
+              "key": "unknown_warn_pct",
+              "value": "80"
+            },
+            {
+              "key": "unknown_error_pct",
+              "value": "98"
+            },
+            {
+              "key": "grid_size",
+              "value": "960 x 960"
+            },
+            {
+              "key": "grid_resolution_m",
+              "value": "0.25"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.51"
+            }
+          ]
+        },
+        {
+          "name": "cost_grid_checker: /sensing/cost_grid/radar",
+          "module": "cost_grid_checker",
+          "level": 0,
+          "message": "OK (10.0 Hz, unknown=99%)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "10.0"
+            },
+            {
+              "key": "expected_hz",
+              "value": "10.0"
+            },
+            {
+              "key": "unknown_ratio_pct",
+              "value": "99.4"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.02"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/cost_grid/radar"
+            },
+            {
+              "key": "grid_name",
+              "value": "radar"
+            },
+            {
+              "key": "width",
+              "value": "120"
+            },
+            {
+              "key": "height",
+              "value": "120"
+            },
+            {
+              "key": "resolution_m",
+              "value": "0.100"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.cost_grid"
+            },
+            {
+              "key": "sensor_location",
+              "value": "derived_from_seven_body_radars"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "map"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "camera_checker: /sensor/camera/econ_rear",
+          "module": "camera_checker",
+          "level": 0,
+          "message": "OK (4.7 fps)",
+          "values": [
+            {
+              "key": "actual_fps",
+              "value": "4.7"
+            },
+            {
+              "key": "expected_fps",
+              "value": "2.0"
+            },
+            {
+              "key": "image_type",
+              "value": "compressed"
+            },
+            {
+              "key": "width",
+              "value": "960"
+            },
+            {
+              "key": "height",
+              "value": "720"
+            },
+            {
+              "key": "encoding",
+              "value": "jpeg"
+            },
+            {
+              "key": "camera_info",
+              "value": "OK"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.14"
+            },
+            {
+              "key": "component_id",
+              "value": "camera.econ_rear"
+            },
+            {
+              "key": "sensor_location",
+              "value": "rear_center"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "camera_rear_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "-0.61933,0.00000,0.30013"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,180.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/REAR",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "REAR"
+            },
+            {
+              "key": "sensor_location",
+              "value": "rear_center"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_rear_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_rear"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/rear/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "0.501"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.rear"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "-0.61733,0.00000,0.33978"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,180.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/RIGHT2",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "RIGHT2"
+            },
+            {
+              "key": "sensor_location",
+              "value": "right_rear"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_right2_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_right2"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/right2/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "0.801"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.right2"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "-0.38,-0.53,0.29013"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,-90.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/RIGHT1",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "RIGHT1"
+            },
+            {
+              "key": "sensor_location",
+              "value": "right_front"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_right1_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_right1"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/right1/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "0.801"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.right1"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.38,-0.53,0.29013"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,-90.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/LEFT1",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "LEFT1"
+            },
+            {
+              "key": "sensor_location",
+              "value": "left_front"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_left1_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_left1"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/left1/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "0.801"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.left1"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.38,0.53,0.29013"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,90.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "planning_costmap_checker: /planning/global_costmap",
+          "module": "planning_costmap_checker",
+          "level": 0,
+          "message": "OK (0.4 Hz, 1.4s ago)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "0.4"
+            },
+            {
+              "key": "expected_hz",
+              "value": "0.0"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "1.44"
+            },
+            {
+              "key": "topic",
+              "value": "/planning/global_costmap/costmap"
+            },
+            {
+              "key": "updates_topic",
+              "value": "/planning/global_costmap/costmap_updates"
+            },
+            {
+              "key": "last_source",
+              "value": "full"
+            },
+            {
+              "key": "costmap",
+              "value": "global"
+            },
+            {
+              "key": "rate_is_error",
+              "value": "true"
+            },
+            {
+              "key": "width",
+              "value": "2400"
+            },
+            {
+              "key": "height",
+              "value": "2400"
+            },
+            {
+              "key": "resolution_m",
+              "value": "0.100"
+            }
+          ]
+        },
+        {
+          "name": "wheel_odometry_checker: /sensor/wheel/main",
+          "module": "wheel_odometry_checker",
+          "level": 0,
+          "message": "OK (19 Hz, vx=0.00 m/s)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "19.0"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2"
+            },
+            {
+              "key": "vx (m/s)",
+              "value": "0.000"
+            },
+            {
+              "key": "vy (m/s)",
+              "value": "0.000"
+            },
+            {
+              "key": "wz (rad/s)",
+              "value": "0.0000"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.00"
+            },
+            {
+              "key": "component_id",
+              "value": "wheel_odometry.main"
+            },
+            {
+              "key": "sensor_location",
+              "value": "drive_wheels"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "robot_center_link"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "gpu_checker: /hardware/gpu0",
+          "module": "gpu_checker",
+          "level": 0,
+          "message": "GPU0 OK (NVIDIA GeForce RTX 3060)",
+          "values": [
+            {
+              "key": "name",
+              "value": "NVIDIA GeForce RTX 3060"
+            },
+            {
+              "key": "util_%",
+              "value": "26.0"
+            },
+            {
+              "key": "mem_used_MB",
+              "value": "4032"
+            },
+            {
+              "key": "mem_total_MB",
+              "value": "12288"
+            },
+            {
+              "key": "mem_%",
+              "value": "32.8"
+            },
+            {
+              "key": "temp_C",
+              "value": "58"
+            },
+            {
+              "key": "power_W",
+              "value": "59.46"
+            },
+            {
+              "key": "power_limit_W",
+              "value": "170.00"
+            }
+          ]
+        },
+        {
+          "name": "cost_grid_checker: /planning/cost_grid/inflation",
+          "module": "cost_grid_checker",
+          "level": 0,
+          "message": "OK (6.0 Hz, unknown=0%)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "6.0"
+            },
+            {
+              "key": "expected_hz",
+              "value": "6.0"
+            },
+            {
+              "key": "unknown_ratio_pct",
+              "value": "0.0"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.06"
+            },
+            {
+              "key": "topic",
+              "value": "/planning/cost_grid/inflation"
+            },
+            {
+              "key": "grid_name",
+              "value": "inflation"
+            },
+            {
+              "key": "width",
+              "value": "180"
+            },
+            {
+              "key": "height",
+              "value": "180"
+            },
+            {
+              "key": "resolution_m",
+              "value": "0.100"
+            }
+          ]
+        },
+        {
+          "name": "planning_lifecycle_checker: /planning/lifecycle/planning/controller_server",
+          "module": "planning_lifecycle_checker",
+          "level": 0,
+          "message": "/planning/controller_server ACTIVE",
+          "values": [
+            {
+              "key": "node",
+              "value": "/planning/controller_server"
+            },
+            {
+              "key": "state",
+              "value": "active"
+            },
+            {
+              "key": "state_id",
+              "value": "3"
+            },
+            {
+              "key": "polled_sec_ago",
+              "value": "0.47"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/FRONT2",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "FRONT2"
+            },
+            {
+              "key": "sensor_location",
+              "value": "front_left"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_front2_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_front2"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/front2/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "1.501"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.04"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.front2"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.62787,0.11005,0.33378"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "system_checker/control",
+          "module": "control",
+          "level": 0,
+          "message": "module graph ok",
+          "values": [
+            {
+              "key": "category",
+              "value": "control"
+            },
+            {
+              "key": "module",
+              "value": "control"
+            },
+            {
+              "key": "required_nodes",
+              "value": "3"
+            },
+            {
+              "key": "required_topics",
+              "value": "6"
+            },
+            {
+              "key": "missing_nodes",
+              "value": ""
+            },
+            {
+              "key": "missing_topics",
+              "value": ""
+            },
+            {
+              "key": "type_mismatches",
+              "value": ""
+            },
+            {
+              "key": "publisher_missing",
+              "value": ""
+            },
+            {
+              "key": "operating_state",
+              "value": "READY"
+            }
+          ]
+        },
+        {
+          "name": "control/drop_zone_maneuver_controller",
+          "module": "control",
+          "level": 0,
+          "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=1.796 parking_point_error_m=0.040 parking_point_body_forward_m=0.039 parking_point_body_lateral_m=-0.009 target_yaw_deg=91.79 settle_s=0.00 yaw_rate_degps=0.00",
+          "values": [
+            {
+              "key": "category",
+              "value": "control"
+            },
+            {
+              "key": "module",
+              "value": "control"
+            },
+            {
+              "key": "phase",
+              "value": "IDLE"
+            },
+            {
+              "key": "command_topic",
+              "value": "/control/cmd_vel_raw"
+            },
+            {
+              "key": "exit_travel_distance_m",
+              "value": "0.425"
+            },
+            {
+              "key": "exit_target_source",
+              "value": "lanelet_pose"
+            },
+            {
+              "key": "exit_target_x_m",
+              "value": "-8.805"
+            },
+            {
+              "key": "exit_target_y_m",
+              "value": "42.397"
+            },
+            {
+              "key": "exit_target_initial_distance_m",
+              "value": "2.219"
+            },
+            {
+              "key": "exit_target_initial_forward_m",
+              "value": "2.205"
+            },
+            {
+              "key": "exit_target_initial_lateral_m",
+              "value": "0.248"
+            },
+            {
+              "key": "exit_target_error_m",
+              "value": "1.796"
+            },
+            {
+              "key": "parking_approach_target_x_m",
+              "value": "-8.757"
+            },
+            {
+              "key": "parking_approach_target_y_m",
+              "value": "42.404"
+            },
+            {
+              "key": "parking_approach_error_m",
+              "value": "0.040"
+            },
+            {
+              "key": "parking_approach_body_forward_error_m",
+              "value": "0.039"
+            },
+            {
+              "key": "parking_approach_body_lateral_error_m",
+              "value": "-0.009"
+            },
+            {
+              "key": "parking_approach_goal_age_s",
+              "value": "86.250"
+            },
+            {
+              "key": "station_x_m",
+              "value": "-8.474"
+            },
+            {
+              "key": "station_y_m",
+              "value": "40.391"
+            },
+            {
+              "key": "station_yaw_deg",
+              "value": "-88.213"
+            }
+          ]
+        },
+        {
+          "name": "localization_lanelet_checker: /localization/lanelet",
+          "module": "localization_lanelet_checker",
+          "level": 0,
+          "message": "OK (20 Hz, cov_trace=0.3400)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "20.0"
+            },
+            {
+              "key": "expected_hz",
+              "value": "10"
+            },
+            {
+              "key": "input_pose_hz",
+              "value": "20.0"
+            },
+            {
+              "key": "evaluated_hz",
+              "value": "10.0"
+            },
+            {
+              "key": "xy_cov_trace",
+              "value": "0.3400"
+            },
+            {
+              "key": "cov_warn_threshold",
+              "value": "10.0000"
+            },
+            {
+              "key": "cov_error_threshold",
+              "value": "100.0000"
+            },
+            {
+              "key": "pos_x (m)",
+              "value": "-8.767"
+            },
+            {
+              "key": "pos_y (m)",
+              "value": "42.403"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.02"
+            }
+          ]
+        },
+        {
+          "name": "localization_gnss_checker: /localization/gnss/main",
+          "module": "localization_gnss_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, cov_trace=0.200)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "xy_cov_trace",
+              "value": "0.2000"
+            },
+            {
+              "key": "cov_warn_threshold",
+              "value": "4.0000"
+            },
+            {
+              "key": "cov_error_threshold",
+              "value": "25.0000"
+            },
+            {
+              "key": "last_jump_m",
+              "value": "0.000"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.09"
+            },
+            {
+              "key": "component_id",
+              "value": "gnss.localization_input"
+            },
+            {
+              "key": "sensor_location",
+              "value": "robot_center_lever_arm_corrected"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "robot_center_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.00000,0.00000,0.00000"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "false"
+            }
+          ]
+        },
+        {
+          "name": "perception_obstacle_checker: /perception/obstacles/camera_detections",
+          "module": "perception_obstacle_checker",
+          "level": 0,
+          "message": "OK (4.7 Hz, 0 det)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "4.7"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "count",
+              "value": "0"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.10"
+            }
+          ]
+        },
+        {
+          "name": "camera_checker: /sensor/camera/econ_front",
+          "module": "camera_checker",
+          "level": 0,
+          "message": "OK (4.7 fps)",
+          "values": [
+            {
+              "key": "actual_fps",
+              "value": "4.7"
+            },
+            {
+              "key": "expected_fps",
+              "value": "2.0"
+            },
+            {
+              "key": "image_type",
+              "value": "compressed"
+            },
+            {
+              "key": "width",
+              "value": "800"
+            },
+            {
+              "key": "height",
+              "value": "600"
+            },
+            {
+              "key": "encoding",
+              "value": "jpeg"
+            },
+            {
+              "key": "camera_info",
+              "value": "OK"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.06"
+            },
+            {
+              "key": "component_id",
+              "value": "camera.econ_front"
+            },
+            {
+              "key": "sensor_location",
+              "value": "front_center"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "camera_front_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.76337,0.00000,0.49568"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "planning_lifecycle_checker: /planning/lifecycle/planning/behavior_server",
+          "module": "planning_lifecycle_checker",
+          "level": 0,
+          "message": "/planning/behavior_server ACTIVE",
+          "values": [
+            {
+              "key": "node",
+              "value": "/planning/behavior_server"
+            },
+            {
+              "key": "state",
+              "value": "active"
+            },
+            {
+              "key": "state_id",
+              "value": "3"
+            },
+            {
+              "key": "polled_sec_ago",
+              "value": "0.47"
+            }
+          ]
+        },
+        {
+          "name": "planning_costmap_checker: /planning/local_costmap",
+          "module": "planning_costmap_checker",
+          "level": 0,
+          "message": "OK (1.7 Hz, 0.6s ago)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "1.7"
+            },
+            {
+              "key": "expected_hz",
+              "value": "0.0"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.57"
+            },
+            {
+              "key": "topic",
+              "value": "/planning/local_costmap/costmap"
+            },
+            {
+              "key": "updates_topic",
+              "value": "/planning/local_costmap/costmap_updates"
+            },
+            {
+              "key": "last_source",
+              "value": "update"
+            },
+            {
+              "key": "costmap",
+              "value": "local"
+            },
+            {
+              "key": "rate_is_error",
+              "value": "true"
+            },
+            {
+              "key": "width",
+              "value": "201"
+            },
+            {
+              "key": "height",
+              "value": "201"
+            },
+            {
+              "key": "resolution_m",
+              "value": "0.100"
+            }
+          ]
+        },
+        {
+          "name": "planning_nav_status_checker: /planning/nav_status",
+          "module": "planning_nav_status_checker",
+          "level": 0,
+          "message": "idle: SUCCEEDED",
+          "values": [
+            {
+              "key": "current_status",
+              "value": "SUCCEEDED"
+            },
+            {
+              "key": "service_maneuver_suppressed",
+              "value": "false"
+            },
+            {
+              "key": "current_abort_suppressed",
+              "value": "false"
+            },
+            {
+              "key": "latest_service_state",
+              "value": "0"
+            },
+            {
+              "key": "service_state_age_s",
+              "value": "2.16279"
+            },
+            {
+              "key": "service_transition_abort_grace_s",
+              "value": "3"
+            },
+            {
+              "key": "abort_count_60s",
+              "value": "0"
+            },
+            {
+              "key": "effective_abort_count_60s",
+              "value": "0"
+            },
+            {
+              "key": "abort_warn/error",
+              "value": "2 / 5"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "19.32"
+            }
+          ]
+        },
+        {
+          "name": "control/camping_site_maneuver_controller",
+          "module": "control",
+          "level": 0,
+          "message": "phase=DONE site=camping_site_7 service_mode=turnaround recall_turnaround_return=True battery_urgent_return=False return_source= crab_speed_mps=0.67 return_published=True return_ack=True",
+          "values": [
+            {
+              "key": "category",
+              "value": "control"
+            },
+            {
+              "key": "module",
+              "value": "control"
+            },
+            {
+              "key": "phase",
+              "value": "DONE"
+            },
+            {
+              "key": "cmd_vel_topic",
+              "value": "/control/cmd_vel_raw"
+            },
+            {
+              "key": "crab_duration_s",
+              "value": "11.23"
+            },
+            {
+              "key": "crab_offset_m",
+              "value": "3.00"
+            },
+            {
+              "key": "crab_source",
+              "value": "goal_pair"
+            },
+            {
+              "key": "return_anchor_source",
+              "value": "route_goal_snap"
+            },
+            {
+              "key": "return_anchor_offset_m",
+              "value": "0.18"
+            },
+            {
+              "key": "return_anchor_error_m",
+              "value": "38.87"
+            },
+            {
+              "key": "live_lanelet_handoff_enabled",
+              "value": "true"
+            },
+            {
+              "key": "live_lanelet_projection_distance_m",
+              "value": "1.80"
+            },
+            {
+              "key": "live_lanelet_handoff_distance_m",
+              "value": "0.15"
+            },
+            {
+              "key": "live_lanelet_handoff_holding",
+              "value": "false"
+            },
+            {
+              "key": "crab_return_stage",
+              "value": "lateral"
+            },
+            {
+              "key": "crab_return_timeout_s",
+              "value": "90.00"
+            }
+          ]
+        },
+        {
+          "name": "gnss_checker: /sensor/gnss/main",
+          "module": "gnss_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, fix=0)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "fix_status",
+              "value": "0"
+            },
+            {
+              "key": "covariance_type",
+              "value": "2"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            },
+            {
+              "key": "component_id",
+              "value": "gnss.main"
+            },
+            {
+              "key": "sensor_location",
+              "value": "left_antenna"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "gnss_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.00000,0.45000,0.00000"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "false"
+            }
+          ]
+        },
+        {
+          "name": "hw_checker: /hardware/memory",
+          "module": "hw_checker",
+          "level": 0,
+          "message": "Memory 43.2% (13809 / 31948 MB)",
+          "values": [
+            {
+              "key": "usage_%",
+              "value": "43.2"
+            },
+            {
+              "key": "used_MB",
+              "value": "13809"
+            },
+            {
+              "key": "total_MB",
+              "value": "31948"
+            },
+            {
+              "key": "available_MB",
+              "value": "18138"
+            }
+          ]
+        },
+        {
+          "name": "localization_source_checker: /localization/source",
+          "module": "localization_source_checker",
+          "level": 0,
+          "message": "Primary EKF filter active",
+          "values": [
+            {
+              "key": "current_source",
+              "value": "primary_filter"
+            },
+            {
+              "key": "primary_source",
+              "value": "primary_filter"
+            },
+            {
+              "key": "fallback_source",
+              "value": "fallback_source"
+            },
+            {
+              "key": "switch_count_60s",
+              "value": "0"
+            },
+            {
+              "key": "switch_warn/error",
+              "value": "3 / 10"
+            },
+            {
+              "key": "fallback_duration_sec",
+              "value": "0.0"
+            },
+            {
+              "key": "fallback_warn/error_sec",
+              "value": "10 / 60"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/LEFT2",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "LEFT2"
+            },
+            {
+              "key": "sensor_location",
+              "value": "left_rear"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_left2_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_left2"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/left2/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "0.801"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.03"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.left2"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "-0.38,0.53,0.29013"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,90.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "hw_checker: /hardware/disk",
+          "module": "hw_checker",
+          "level": 0,
+          "message": "Disk 87.7% (870.9 / 993.2 GB)",
+          "values": [
+            {
+              "key": "usage_%",
+              "value": "87.7"
+            },
+            {
+              "key": "used_GB",
+              "value": "870.9"
+            },
+            {
+              "key": "total_GB",
+              "value": "993.2"
+            },
+            {
+              "key": "free_GB",
+              "value": "122.3"
+            },
+            {
+              "key": "path",
+              "value": "/"
+            }
+          ]
+        },
+        {
+          "name": "planning_lifecycle_checker: /planning/lifecycle/planning/bt_navigator",
+          "module": "planning_lifecycle_checker",
+          "level": 0,
+          "message": "/planning/bt_navigator ACTIVE",
+          "values": [
+            {
+              "key": "node",
+              "value": "/planning/bt_navigator"
+            },
+            {
+              "key": "state",
+              "value": "active"
+            },
+            {
+              "key": "state_id",
+              "value": "3"
+            },
+            {
+              "key": "polled_sec_ago",
+              "value": "0.47"
+            }
+          ]
+        },
+        {
+          "name": "parking/parking_dispatcher",
+          "module": "parking",
+          "level": 0,
+          "message": "parking_method=reverse battery_percent=35.000000 charging_required=false forced=false attempt=9 phase=PARKED",
+          "values": [
+            {
+              "key": "category",
+              "value": "parking"
+            },
+            {
+              "key": "module",
+              "value": "parking"
+            }
+          ]
+        },
+        {
+          "name": "localization_mode_checker: /localization/mode",
+          "module": "localization_mode_checker",
+          "level": 0,
+          "message": "NORMAL - localization healthy",
+          "values": [
+            {
+              "key": "mode",
+              "value": "NORMAL"
+            },
+            {
+              "key": "mode_value",
+              "value": "0"
+            },
+            {
+              "key": "confidence",
+              "value": "1.000"
+            },
+            {
+              "key": "gnss_ok",
+              "value": "true"
+            },
+            {
+              "key": "imu_ok",
+              "value": "true"
+            },
+            {
+              "key": "wheel_ok",
+              "value": "true"
+            },
+            {
+              "key": "health",
+              "value": "true"
+            },
+            {
+              "key": "gnss_innovation_norm",
+              "value": "0.000"
+            },
+            {
+              "key": "wheel_innovation_norm",
+              "value": "0.000"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.05"
+            }
+          ]
+        },
+        {
+          "name": "planning_path_checker: /planning/path/global_path",
+          "module": "planning_path_checker",
+          "level": 0,
+          "message": "navigation idle",
+          "values": [
+            {
+              "key": "nav_active",
+              "value": "false"
+            },
+            {
+              "key": "point_count",
+              "value": "286"
+            }
+          ]
+        },
+        {
+          "name": "cost_grid_checker: /sensing/cost_grid/lidar",
+          "module": "cost_grid_checker",
+          "level": 0,
+          "message": "OK (10.0 Hz, unknown=100%)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "10.0"
+            },
+            {
+              "key": "expected_hz",
+              "value": "10.0"
+            },
+            {
+              "key": "unknown_ratio_pct",
+              "value": "99.7"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.09"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/cost_grid/lidar"
+            },
+            {
+              "key": "grid_name",
+              "value": "lidar"
+            },
+            {
+              "key": "width",
+              "value": "180"
+            },
+            {
+              "key": "height",
+              "value": "180"
+            },
+            {
+              "key": "resolution_m",
+              "value": "0.100"
+            },
+            {
+              "key": "component_id",
+              "value": "lidar.cost_grid"
+            },
+            {
+              "key": "sensor_location",
+              "value": "derived_from_front_upper_center_lidar"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "map"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "perception_obstacle_checker: /perception/obstacles/fused_obstacles",
+          "module": "perception_obstacle_checker",
+          "level": 0,
+          "message": "OK (4.7 Hz, 0 pts)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "4.7"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "count",
+              "value": "0"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.10"
+            }
+          ]
+        },
+        {
+          "name": "localization_pose_checker: /localization/pose",
+          "module": "localization_pose_checker",
+          "level": 0,
+          "message": "OK (20 Hz, cov_trace=0.0208)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "20.0"
+            },
+            {
+              "key": "expected_hz",
+              "value": "20"
+            },
+            {
+              "key": "xy_cov_trace",
+              "value": "0.0208"
+            },
+            {
+              "key": "cov_warn_threshold",
+              "value": "100.0000"
+            },
+            {
+              "key": "cov_error_threshold",
+              "value": "400.0000"
+            },
+            {
+              "key": "last_jump_m",
+              "value": "0.000"
+            },
+            {
+              "key": "max_jump_m",
+              "value": "20.00"
+            },
+            {
+              "key": "pos_x (m)",
+              "value": "-8.517"
+            },
+            {
+              "key": "pos_y (m)",
+              "value": "40.624"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.01"
+            }
+          ]
+        },
+        {
+          "name": "hw_checker: /hardware/cpu",
+          "module": "hw_checker",
+          "level": 0,
+          "message": "CPU 35.6%",
+          "values": [
+            {
+              "key": "usage_%",
+              "value": "35.6"
+            }
+          ]
+        },
+        {
+          "name": "localization_init_checker: /localization/init",
+          "module": "localization_init_checker",
+          "level": 0,
+          "message": "Drop zone init check disabled",
+          "values": [
+            {
+              "key": "enabled",
+              "value": "false"
+            }
+          ]
+        },
+        {
+          "name": "planning_path_checker: /planning/path/local_path",
+          "module": "planning_path_checker",
+          "level": 0,
+          "message": "navigation idle",
+          "values": [
+            {
+              "key": "nav_active",
+              "value": "false"
+            },
+            {
+              "key": "point_count",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "name": "imu_checker: /sensor/imu/main",
+          "module": "imu_checker",
+          "level": 0,
+          "message": "OK (10 Hz)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2"
+            },
+            {
+              "key": "gyro_x (rad/s)",
+              "value": "0.000"
+            },
+            {
+              "key": "gyro_y (rad/s)",
+              "value": "0.000"
+            },
+            {
+              "key": "gyro_z (rad/s)",
+              "value": "-0.000"
+            },
+            {
+              "key": "accel_x (m/s^2)",
+              "value": "-0.000"
+            },
+            {
+              "key": "accel_y (m/s^2)",
+              "value": "0.045"
+            },
+            {
+              "key": "accel_z (m/s^2)",
+              "value": "9.810"
+            },
+            {
+              "key": "accel_magnitude (m/s^2)",
+              "value": "9.810"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.08"
+            },
+            {
+              "key": "component_id",
+              "value": "imu.main"
+            },
+            {
+              "key": "sensor_location",
+              "value": "front_upper_center"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "imu_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.68800,0.00000,0.75600"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "lidar_checker: /sensor/lidar/main",
+          "module": "lidar_checker",
+          "level": 0,
+          "message": "OK (9.6 Hz, 2735 pts)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "9.6"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "point_count",
+              "value": "2735"
+            },
+            {
+              "key": "nan_ratio",
+              "value": "0.000"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.10"
+            },
+            {
+              "key": "component_id",
+              "value": "lidar.main"
+            },
+            {
+              "key": "sensor_location",
+              "value": "front_upper_center"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "lidar_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.76336,0.00000,0.59538"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "lidar_checker: /sensor/lidar/filtered",
+          "module": "lidar_checker",
+          "level": 0,
+          "message": "OK (9.6 Hz, 0 pts)",
+          "values": [
+            {
+              "key": "actual_hz",
+              "value": "9.6"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "point_count",
+              "value": "0"
+            },
+            {
+              "key": "nan_ratio",
+              "value": "0.000"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.09"
+            },
+            {
+              "key": "component_id",
+              "value": "lidar.filtered"
+            },
+            {
+              "key": "sensor_location",
+              "value": "front_upper_center"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "lidar_link"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.76336,0.00000,0.59538"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "velocity_converter_checker: /sensing/velocity_converter",
+          "module": "velocity_converter_checker",
+          "level": 0,
+          "message": "OK (19.0 Hz)",
+          "values": [
+            {
+              "key": "velocity_input",
+              "value": "OK"
+            },
+            {
+              "key": "imu_input",
+              "value": "OK"
+            },
+            {
+              "key": "output",
+              "value": "OK"
+            },
+            {
+              "key": "output_hz",
+              "value": "19.0"
+            },
+            {
+              "key": "vel_age_sec",
+              "value": "0.00"
+            },
+            {
+              "key": "imu_age_sec",
+              "value": "0.07"
+            },
+            {
+              "key": "out_age_sec",
+              "value": "0.00"
+            },
+            {
+              "key": "component_id",
+              "value": "velocity_converter"
+            },
+            {
+              "key": "sensor_location",
+              "value": "virtual_wheel_imu_fusion"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "robot_center_link"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        },
+        {
+          "name": "radar_checker: /sensor/radar/FRONT1",
+          "module": "radar_checker",
+          "level": 0,
+          "message": "OK (9.5 Hz, no target)",
+          "values": [
+            {
+              "key": "sensor_name",
+              "value": "FRONT1"
+            },
+            {
+              "key": "sensor_location",
+              "value": "front_right"
+            },
+            {
+              "key": "sensor_frame",
+              "value": "radar_front1_link"
+            },
+            {
+              "key": "port",
+              "value": "CARLA:/carla/ego_vehicle/radar_front1"
+            },
+            {
+              "key": "topic",
+              "value": "/sensing/radar/front1/range"
+            },
+            {
+              "key": "enabled",
+              "value": "true"
+            },
+            {
+              "key": "actual_hz",
+              "value": "9.5"
+            },
+            {
+              "key": "expected_hz",
+              "value": "2.0"
+            },
+            {
+              "key": "range_valid",
+              "value": "true(no_target)"
+            },
+            {
+              "key": "no_target",
+              "value": "true"
+            },
+            {
+              "key": "range_m",
+              "value": "1.501"
+            },
+            {
+              "key": "last_msg_sec_ago",
+              "value": "0.04"
+            },
+            {
+              "key": "component_id",
+              "value": "radar.front1"
+            },
+            {
+              "key": "mount_xyz_m",
+              "value": "0.62787,-0.11005,0.33378"
+            },
+            {
+              "key": "mount_rpy_deg",
+              "value": "0.0,0.0,0.0"
+            },
+            {
+              "key": "pose_verified",
+              "value": "true"
+            }
+          ]
+        }
+      ],
+      "diagnostics_agg_count": 53,
+      "diagnostics_agg_error_count": 0,
+      "system_health": "OK",
+      "mission_phase": "READY",
+      "mission_source": "none",
+      "service_state": 0,
+      "service_state_name": "DROP_ZONE_WAIT",
+      "service_state_description": "reverse_parking_controller:PARKED:station XY goal reached; parking_method=reverse battery_percent=35.000000 charging_required=false forced=false attempt=9",
+      "destination": {
+        "site": "B7",
+        "run": true
+      },
+      "battery_percentage": 35,
+      "battery_charge_complete": false,
+      "platform_is_charging": false,
+      "battery_power_supply_status": 3,
+      "battery_return_pending": false,
+      "battery_return_started": false,
+      "battery_return_waiting_for_user": false,
+      "departure_delay_active": false,
+      "departure_delay_seconds": 0.0,
+      "minimum_battery_percentage": 35.0,
+      "occupied_sites": [],
+      "redock_pending": false,
+      "redock_waiting_for_can": false,
+      "redock_status": "idle",
+      "redock_message": "",
+      "mission_dispatch_active": false,
+      "mission_dispatch_site": "",
+      "mission_dispatch_intent": "",
+      "mission_dispatch_owner": "",
+      "mission_dispatch_generation": 0,
+      "mission_retryable": false,
+      "mission_retry_site": "",
+      "mission_retry_owner": "",
+      "guest_cancel_restart_ready": false,
+      "battery_return_urgent": false,
+      "charging_required": false,
+      "parking_policy_mode": "auto",
+      "parking_selected_method": "reverse",
+      "urgent_return_battery_percentage": 25.0,
+      "mission_execution_error": "",
+      "recall_final_return_ready": false,
+      "backend_startup_recovery": false
+    },
+    "/api/driving": {
+      "schema_version": 1,
+      "connected": true,
+      "mission": {
+        "active": false,
+        "generation": 0,
+        "intent": "",
+        "site": "",
+        "service_state_name": "DROP_ZONE_WAIT",
+        "phase": "READY",
+        "description": "reverse_parking_controller:PARKED:station XY goal reached; parking_method=reverse battery_percent=35.000000 charging_required=false forced=false attempt=9"
+      },
+      "motion": {
+        "speed_mps": 4.0461310843228135e-08,
+        "vx_mps": 3.61681376815008e-09,
+        "vy_mps": 4.0299334154782886e-08,
+        "yaw_rate_rps": 3.491472241248963e-11,
+        "frame_id": "odom",
+        "age_s": 0.238
+      },
+      "battery": {
+        "percentage": 34.99999940395355
+      },
+      "pose": {
+        "x": -8.516531014784603,
+        "y": 40.62471484782405,
+        "yaw": 1.6228938975342873,
+        "frame_id": "map",
+        "age_s": 0.034
+      },
+      "progress": {
+        "remaining_distance_m": null,
+        "remaining_time_s": null,
+        "completion_pct": null,
+        "valid": false,
+        "reason": "waiting_or_maneuver"
+      }
+    },
+    "/api/charging-access": {
+      "phase": "inactive",
+      "message": "정차했습니다. drop_zone 내 위치와 충전 해제 상태를 확인해 주세요.",
+      "can_leave": false,
+      "cargo_access_ready": false,
+      "battery_percentage": 35,
+      "minimum_battery_percentage": 35.0,
+      "platform_is_charging": false,
+      "platform_feedback_fresh": true,
+      "electrical_stop_available": false,
+      "physical_disconnect_verified": false,
+      "target_label": "drop_zone 내 대기 위치",
+      "blocked_reason": "충전 중일 때만 충전 위치에서 이동할 수 있습니다."
+    }
+  },
+  "completed_utc": "2026-11-03T08:23:35.423253+00:00",
+  "not_performed": [
+    "dispatch",
+    "SOC change",
+    "forced Dock",
+    "synthetic feedback",
+    "retry"
+  ]
+}

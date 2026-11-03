@@ -1,0 +1,213 @@
+{
+  "captured_utc": "2026-11-03T07:56:30.122045+00:00",
+  "evidence_type": "ACTUAL_EXISTING_GUEST_BROWSER_PASSIVE_CAPTURE_NOT_FIXTURE",
+  "debug_port": 9223,
+  "page_id": "6AE979A0179E262C488FA5B079731DC9",
+  "service_url": "http://127.0.0.1:8012/",
+  "no_clicks": true,
+  "no_navigation_reload": true,
+  "no_new_service_websocket": true,
+  "no_robot_commands": true,
+  "dom": {
+    "url": "http://127.0.0.1:8012/",
+    "title": "국립공원 로봇 서비스",
+    "viewport": {
+      "width": 910,
+      "height": 1016,
+      "scrollX": 0,
+      "scrollY": 0
+    },
+    "battery": {
+      "id": "batteryBadge",
+      "text": "34%",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "batteryText": "34%",
+    "batteryPolicyHelp": {
+      "id": "batteryPolicyHelp",
+      "text": "35% 이상 충전 후 호출해 주세요.",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "batteryPolicyDetail": {
+      "id": "batteryPolicyDetail",
+      "text": "",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "sites": [
+      {
+        "id": "",
+        "text": "B1",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B2",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B3",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B4",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B5",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B6",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B7",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B8",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B9",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B10",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B11",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B12",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      },
+      {
+        "id": "",
+        "text": "B13",
+        "disabled": true,
+        "ariaDisabled": null,
+        "visible": true
+      }
+    ],
+    "site_count": 13,
+    "disabled_site_count": 13,
+    "visible_site_count": 13,
+    "call": {
+      "id": "navigateBtn",
+      "text": "사이트 선택 후 호출",
+      "disabled": true,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "overlays": [
+      {
+        "id": "lockedOverlay",
+        "text": "\n  \n    🔒\n    다른 분이 이용 중이에요\n    잠시 후 다시 시도해 주세요.\n    다시 시도\n  \n",
+        "disabled": false,
+        "ariaDisabled": null,
+        "visible": false
+      },
+      {
+        "id": "graceOverlay",
+        "text": "\n  \n    ⏳\n    잠시 후 연결됩니다\n    연결을 확인하고 있습니다.\n    60\n    초 후 자동 접속\n  \n",
+        "disabled": false,
+        "ariaDisabled": null,
+        "visible": false
+      },
+      {
+        "id": "confirmOverlay",
+        "text": "\n  \n    --\n    로봇을 호출하시겠습니까?\n    \n      로봇이 사이트 앞 도로에서 멈춥니다.\n      로봇이 오는 길을 비워 주세요.\n    \n    \n      취소\n      호출\n    \n  \n",
+        "disabled": false,
+        "ariaDisabled": null,
+        "visible": false
+      }
+    ],
+    "statusPhase": {
+      "id": "statusPhase",
+      "text": "충전 중",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "statusLabel": {
+      "id": "statusLabel",
+      "text": "충전 위치에서 대기 중입니다.",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "infoBanner": {
+      "id": "infoBanner",
+      "text": "35% 이상 충전되면 호출해 주세요.",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "siteCard": {
+      "id": "siteCard",
+      "text": "어디로 부를까요?\n이용 중인 사이트 번호를 눌러 주세요.\nB1\nB2\nB3\nB4\nB5\nB6\nB7\nB8\nB9\nB10\nB11\nB12\nB13\n사이트 선택 후 호출",
+      "disabled": false,
+      "ariaDisabled": null,
+      "visible": true
+    },
+    "bodyText": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n34%\n배터리\n35% 이상 충전 후 호출해 주세요.\n배터리·주차 자세히\n로봇 상태\n충전 중\n충전 위치에서 대기 중입니다.\n35% 이상 충전되면 호출해 주세요.\n어디로 부를까요?\n이용 중인 사이트 번호를 눌러 주세요.\nB1\nB2\nB3\nB4\nB5\nB6\nB7\nB8\nB9\nB10\nB11\nB12\nB13\n사이트 선택 후 호출",
+    "existingState": {
+      "batteryPercentage": 34,
+      "missionBatteryReady": false,
+      "minimumBatteryPercentage": 35,
+      "currentPhase": "charging",
+      "currentServiceStateName": "CHARGING",
+      "safetyHold": false,
+      "controlGateState": "CHARGING",
+      "wsReadyState": 1
+    }
+  },
+  "png_sha256": "2d163c247b498c0b485affe2e1df5fff498b0c65c032fa020d206c6988d9a34d",
+  "cannot_judge": [
+    "No click/POST made: backend authorization and invocation result not tested by this passive capture.",
+    "DOM count may include controls outside screenshot viewport; visible/layout counts are recorded separately."
+  ]
+}

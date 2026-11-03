@@ -1,0 +1,27 @@
+{
+  "scope": "Actual visible Robot UI PNGs; irregular samples and gaps between phases, not continuous real-time video. No controls from this capture.",
+  "frames": [
+    {
+      "utc": "2026-11-02T11:39:22.998811+00:00",
+      "monotonic_s": 24667.893547016,
+      "group": "apriltag",
+      "service_state_name": "DROP_ZONE_PARKING",
+      "platform_is_charging": false,
+      "battery_percentage": 34,
+      "parking": {
+        "name": "parking",
+        "level": 2,
+        "message": "parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=7 phase=ERROR error=phase=ERROR tag_distance_m=0.372 axis_distance_m=0.988 lateral_m=0.051 heading_rad=-0.101 remaining_tag_m=0.000 configured_stop_tag_m=0.400 stop_reason=tag_range stop_trigger_tag_m=0.392 retry=0 charging=false"
+      },
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_aligned_step/motion_frames/01_apriltag.png",
+        "bytes": 265588
+      }
+    }
+  ],
+  "group_counts": {
+    "reverse": 0,
+    "apriltag": 1,
+    "charging": 0
+  }
+}

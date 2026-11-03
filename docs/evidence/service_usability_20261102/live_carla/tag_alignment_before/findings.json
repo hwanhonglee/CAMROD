@@ -1,0 +1,67 @@
+{
+  "schema": "camrod.live_carla.tag_alignment_findings.v1",
+  "HH_261102": "Keep measured image facts separate from a provenance-based static-map projection.",
+  "measured": {
+    "capture_utc": "2026-11-02T11:17:53.154705+00:00",
+    "rear_raw_image": "rear_raw.png",
+    "human_visual_review": "No recognizable AprilTag visible; pavement, curbs, trees and bench in frame.",
+    "image_frames_in5s": 23,
+    "tag_pose_messages_in5s": 0,
+    "tag_pose_publisher_count": 1,
+    "pose_map": {
+      "position": {
+        "x": -8.512820206071057,
+        "y": 40.62046933719856,
+        "z": 0.0
+      },
+      "orientation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.7248189560772884,
+        "w": 0.6889393884160129
+      }
+    },
+    "horizontal_fov_deg": 90.0,
+    "station_xy_error_m": 0.23278680902034257
+  },
+  "authored_station": {
+    "yaml": "/home/hong/camrod_ws/src/camrod_bringup/config/map/drop_zones.yaml",
+    "sha256": "e8bd4af26a1d7fb94ea5f3e02e4d31f972233195e3cc61786252260627fae6ad",
+    "id": "dz_area_7144",
+    "x": -8.47366,
+    "y": 40.391,
+    "reverse_axis_yaw_deg": -88.2127,
+    "body_yaw_deg": 91.7873
+  },
+  "static_tag_provenance": {
+    "stage_report": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/map_dropzone_stage.json",
+    "completed_at_utc": "2026-09-08T03:36:45.846271Z",
+    "target_center_ue_cm": [
+      -1817.25448698075,
+      -2958.9998829835,
+      -63.64659118652344
+    ],
+    "map_asset": "/home/hong/carla/Unreal/CarlaUE4/Content/map_package/Maps/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone.umap",
+    "stage_map_sha256": "1af1a6d160f8ee24a97294b104e5be9ca6aec767fc456abcf51f43a0ee4b1343",
+    "current_disk_map_sha256": "1af1a6d160f8ee24a97294b104e5be9ca6aec767fc456abcf51f43a0ee4b1343",
+    "disk_asset_matches_stage": true,
+    "alignment_yaml": "/home/hong/camrod_ws/src/camrod_carla_adapter/config/woraksan_lane_anchor_alignment.yaml",
+    "inferred_tag_center_map_xy": [
+      -11.22038483465656,
+      39.08016974490474
+    ],
+    "inferred_body_forward_m": -1.400975378663063,
+    "inferred_body_left_m": 2.7822108188215626,
+    "inferred_rear_off_axis_deg_at_body_origin": 63.27257299084985
+  },
+  "conclusion": "The actual rear frame contains no recognizable tag despite a live image/detector pipeline. Current map-v26 authored station versus historical v224 static tag suggests horizontal misalignment outside rear FOV. Projection is based on preserved map provenance and disk hash, NOT a new live UE actor-transform measurement.",
+  "no_changes": [
+    "motion",
+    "SOC",
+    "docking retry",
+    "lease",
+    "map",
+    "tag placement",
+    "parameters"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "utc": "2026-11-02T11:02:37.388846+00:00",
+  "test": "Robot recall backend negative test at measured SOC34; not a successful UI dispatch",
+  "http_status": 400,
+  "response": {
+    "success": false,
+    "intent": "recall",
+    "site": "B7",
+    "error": "battery_below_mission_minimum",
+    "battery_percentage": 34,
+    "minimum_battery_percentage": 35,
+    "message": "battery 34% is below mission minimum 35%"
+  },
+  "before": {
+    "ready": true,
+    "battery_percentage": 34,
+    "mission_dispatch_active": false,
+    "mission_dispatch_generation": 0,
+    "service_state_name": "OPERATOR_STOPPED"
+  },
+  "after": {
+    "ready": true,
+    "battery_percentage": 34,
+    "mission_dispatch_active": false,
+    "mission_dispatch_generation": 0,
+    "service_state_name": "OPERATOR_STOPPED"
+  }
+}

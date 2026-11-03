@@ -1,0 +1,90 @@
+{
+  "schema": "camrod.actual05.cargo_visual_derivatives.v1",
+  "sources": [
+    {
+      "file": "01_before.png",
+      "sha256": "2a1fd7129ed06a0324176637297eef9732e00dc34d39d8df9727ff90b49dcd49",
+      "state_observation_utc": "2026-11-03T08:14:04.567227+00:00",
+      "source_gap_s": 0.0,
+      "phase": "inactive",
+      "charging": true,
+      "cargo_ready": false
+    },
+    {
+      "file": "phase_departing.png",
+      "sha256": "18a66ddb8796346da0e09a4b92e74cbd5f96ac361aee32dcd613436081115aa2",
+      "state_observation_utc": "2026-11-03T08:14:06.153312+00:00",
+      "source_gap_s": 1.586085,
+      "phase": "departing",
+      "charging": true,
+      "cargo_ready": false
+    },
+    {
+      "file": "phase_ready.png",
+      "sha256": "d1e39ab2feae691c5b62c280488a11e383c6b7cadfefc65cc45f97fcba37bbe1",
+      "state_observation_utc": "2026-11-03T08:14:31.696000+00:00",
+      "source_gap_s": 25.542688,
+      "phase": "ready",
+      "charging": false,
+      "cargo_ready": true
+    },
+    {
+      "file": "02_ready.png",
+      "sha256": "2366458cd8b7f26fa2d36dc3878784fab8094320f65d6e54220577e4ddd14952",
+      "state_observation_utc": "2026-11-03T08:14:33.836156+00:00",
+      "source_gap_s": 2.140156,
+      "phase": "ready",
+      "charging": false,
+      "cargo_ready": true
+    }
+  ],
+  "metadata_sources": [
+    {
+      "file": "cargo_exit_05/result.json",
+      "sha256": "3f34545b81c846d0f188b4ccc57cccdb2874d66006b2d3f39a414c8b7de32d3c"
+    },
+    {
+      "file": "cargo_exit_05/observations.jsonl",
+      "sha256": "16e8f835e5d02a419ffdab095730ffd15f2e5035c3b1fc54dab796380db03a77"
+    },
+    {
+      "file": "cargo_exit_05/make_phase_gif.py",
+      "sha256": "b844d3347db0724e35b703aff21f166b51b2bbba4c5dea75c0df53cee2a9c052"
+    },
+    {
+      "file": "run_cargo_exit.py",
+      "sha256": "0e5e8857305d3f74e9766b9114ac93007612f3986e3343fe726e71762846b414"
+    },
+    {
+      "file": "battery_cycle_04/make_visuals.py",
+      "sha256": "c44435fdd092f139767ba11a64779ee1b802ed56d255e91bb50ebeaaaf1240b1"
+    }
+  ],
+  "command": [
+    "python3",
+    "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/cargo_exit_05/make_phase_gif.py"
+  ],
+  "result_status": "CARGO_ACCESS_READY_OBSERVED",
+  "measured_from_result": {
+    "forward_m": 0.5151709965122913,
+    "lateral_m": 0.001434273010879672,
+    "station_error_m": 0.19139847655463751,
+    "yaw_change_rad": -0.0008479507729504121
+  },
+  "output": {
+    "file": "phase_progress.gif",
+    "sha256": "f3ab61018671e63c1a4489c09178a89d12632a94faa7e5f79330cc0a1f130b25",
+    "bytes": 146854,
+    "width": 960,
+    "height": 1120,
+    "frames": 4,
+    "playback_duration_ms": 8600
+  },
+  "limits": [
+    "Actual05 PNGs only; no AI image or repainted UI content.",
+    "Nonuniform screenshots, not continuous motion or speed evidence.",
+    "UTC labels are API state observations immediately before the screenshot call, not camera exposure timestamps.",
+    "No claim that retest_05_desktop.mp4 includes the ready terminal; this GIF uses the actual ready PNGs.",
+    "Simulated contact feedback, not hardware charger/CAN or mechanical disconnect proof."
+  ]
+}

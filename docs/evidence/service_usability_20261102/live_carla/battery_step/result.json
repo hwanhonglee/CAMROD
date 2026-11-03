@@ -1,0 +1,671 @@
+{
+  "schema": "camrod.live_carla.battery_trial_result.v1",
+  "HH_261102": "Preserve the actual failed docking outcome without synthetic charging or an automatic retry.",
+  "captured_utc": "2026-11-02T11:14:33.697265+00:00",
+  "status": "FAILED_DOCK_TAG_UNAVAILABLE",
+  "mission": {
+    "site": "B7",
+    "intent": "delivery",
+    "generation": 1793617261427001
+  },
+  "checks": {
+    "measured_soc34": true,
+    "ui_return_command_recorded": true,
+    "actual_reverse_parked": true,
+    "automatic_apriltag_selected": true,
+    "charging_contact_observed": false
+  },
+  "final_state": {
+    "ready": false,
+    "ready_message": "planning_not_ready:error_stop, control_gate_unhealthy:2, control_gate_state:fault_hold",
+    "service_state": 10,
+    "service_state_name": "DROP_ZONE_PARKING",
+    "service_state_description": "apriltag_parking_controller:WAITING_FOR_TAG; parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6",
+    "battery_percentage": 34,
+    "platform_is_charging": false,
+    "mission_dispatch_active": true,
+    "mission_dispatch_generation": 1793617261427001,
+    "system_health": "ERROR",
+    "mission_execution_error": ""
+  },
+  "motion": {
+    "speed_mps": 9.173636405859831e-08,
+    "vx_mps": 4.520328320911664e-08,
+    "vy_mps": 7.98262092160719e-08,
+    "yaw_rate_rps": 4.109646939739188e-11,
+    "frame_id": "odom",
+    "age_s": 0.083
+  },
+  "pose": {
+    "x": -8.512820166406792,
+    "y": 40.6204693661758,
+    "yaw": 1.6215431429176324,
+    "frame_id": "map",
+    "age_s": 0.03
+  },
+  "ros_status": {
+    "/platform/status": {
+      "received_monotonic_s": 23178.04324667,
+      "source_stamp": {
+        "sec": 0,
+        "nanosec": 0
+      },
+      "data": {
+        "stamp": {
+          "sec": 0,
+          "nanosec": 0
+        },
+        "header": {
+          "stamp": {
+            "sec": 1793618073,
+            "nanosec": 147687472
+          },
+          "frame_id": "robot_center_link"
+        },
+        "battery_percentage": 0.3400000035762787,
+        "battery_state_available": true,
+        "is_charging": false,
+        "battery_current_a": -1.0,
+        "control_mode": 1,
+        "estop": false,
+        "error_code": 0,
+        "vehicle_state": 0,
+        "velocity": {
+          "header": {
+            "stamp": {
+              "sec": 1793618073,
+              "nanosec": 118833469
+            },
+            "frame_id": "odom"
+          },
+          "twist": {
+            "linear": {
+              "x": 5.5268379378914743e-08,
+              "y": -6.342088873065087e-08,
+              "z": -1.814585543949849e-07
+            },
+            "angular": {
+              "x": 4.5477954656816e-07,
+              "y": -5.029504419681957e-07,
+              "z": 9.556679851109142e-11
+            }
+          }
+        },
+        "motion_mode": 0
+      },
+      "receipt_age_s": 0.15588852899963968
+    },
+    "/parking/status": {
+      "received_monotonic_s": 23178.130006386,
+      "source_stamp": {
+        "sec": 1793618073,
+        "nanosec": 235072554
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793618073,
+          "nanosec": 235072554
+        },
+        "module_name": "parking",
+        "level": 2,
+        "operating_state": "ERROR",
+        "message": "parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6 phase=ERROR error=phase=ERROR tag_distance_m=-1.000 axis_distance_m=1.796 lateral_m=-2.567 heading_rad=-0.147 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 charging=false",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      },
+      "receipt_age_s": 0.06912881300013396
+    },
+    "/parking/private/apriltag/status": {
+      "received_monotonic_s": 23177.755646376,
+      "source_stamp": {
+        "sec": 1793618072,
+        "nanosec": 860578860
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793618072,
+          "nanosec": 860578860
+        },
+        "module_name": "apriltag_parking_controller",
+        "level": 2,
+        "operating_state": "ERROR",
+        "message": "phase=ERROR tag_distance_m=-1.000 axis_distance_m=1.796 lateral_m=-2.567 heading_rad=-0.147 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 charging=false",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      },
+      "receipt_age_s": 0.44348882299891557
+    },
+    "/control/cmd_vel_safety_gate/status": {
+      "received_monotonic_s": 23178.098705082,
+      "source_stamp": {
+        "sec": 1793618073,
+        "nanosec": 203237686
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793618073,
+          "nanosec": 203237686
+        },
+        "module_name": "cmd_vel_safety_gate",
+        "level": 2,
+        "operating_state": "FAULT_HOLD",
+        "message": "state=FAULT_HOLD reasons=estop charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=34.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      },
+      "receipt_age_s": 0.10043011699963245
+    }
+  },
+  "timeline": [
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:10:30.386258+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 22935.280963749,
+      "source_stamp": null,
+      "data": {
+        "state": 9,
+        "state_name": "RETURN_WITH_CARGO",
+        "description": "camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=robot_ui:usage_complete:site_exit_first; preserve_retrace_yaw action=stationary_settle yaw_error_deg=2.98"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:10:30.386950+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 22935.281656341,
+      "source_stamp": null,
+      "data": {
+        "state": 3,
+        "state_name": "RETURNING_TO_DROP_ZONE",
+        "description": "Returning from site to drop zone"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:10:31.420027+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 22936.314727644,
+      "source_stamp": null,
+      "data": {
+        "state": 9,
+        "state_name": "RETURN_WITH_CARGO",
+        "description": "camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:10:38.820381+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 22943.715084306,
+      "source_stamp": null,
+      "data": {
+        "state": 9,
+        "state_name": "RETURN_WITH_CARGO",
+        "description": "camping_site_maneuver_controller:DONE:live lanelet handoff current=(15.25,9.64) projection=(15.12,9.59) lateral_error=0.14m original_anchor_error=0.20m"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:45.404262+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23010.298961509,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "drop_zone_maneuver_controller:POSITION_PARKING_POINT:start=planning_state:return_to_drop_zone; target=(-8.757,42.404) error=0.159m station_projection=2.033m"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:46.493659+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23011.388365159,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "drop_zone_maneuver_controller:POSITION_PARKING_POINT:heartbeat"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:47.693407+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23012.588108562,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "drop_zone_maneuver_controller:ALIGN_PARKING_YAW:exact lanelet parking point settled; rotating 90-degree parking heading"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:48.793217+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23013.687908676,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "drop_zone_maneuver_controller:ALIGN_PARKING_YAW:heartbeat"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:55.794315+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23020.689011177,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "parking_dispatcher:WAITING_FOR_PARKING_OWNER:parking_method=reverse battery_percent=34.000000 charging_required=true forced=false attempt=5"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:55.794575+00:00",
+      "topic": "/parking/status",
+      "received_monotonic_s": 23020.689258425,
+      "source_stamp": {
+        "sec": 1793617915,
+        "nanosec": 793022899
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617915,
+          "nanosec": 793022899
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "WAITING_FOR_PARKING_OWNER",
+        "message": "parking_method=reverse battery_percent=34.000000 charging_required=true forced=false attempt=5 phase=WAITING_FOR_PARKING_OWNER",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:56.433569+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23021.328273355,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "reverse_parking_controller:REVERSE_APPROACH:start=parking_dispatcher:attempt=5:drop_zone_maneuver_controller:planning_state:return_to_drop_zone initial_station_distance_m=2.044 maximum_reverse_distance_m=5.000; parking_method=reverse battery_percent=34.000000 charging_required=true forced=false attempt=5"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:56.433746+00:00",
+      "topic": "/parking/status",
+      "received_monotonic_s": 23021.328448396,
+      "source_stamp": {
+        "sec": 1793617916,
+        "nanosec": 433100671
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617916,
+          "nanosec": 433100671
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "REVERSE_APPROACH",
+        "message": "parking_method=reverse battery_percent=34.000000 charging_required=true forced=false attempt=5 phase=REVERSE_APPROACH",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:11:56.433867+00:00",
+      "topic": "/parking/private/reverse/status",
+      "received_monotonic_s": 23021.328568445,
+      "source_stamp": {
+        "sec": 1793617916,
+        "nanosec": 432894505
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617916,
+          "nanosec": 432894505
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "REVERSE_APPROACH",
+        "message": "phase=REVERSE_APPROACH charging=False detail=start=parking_dispatcher:attempt=5:drop_zone_maneuver_controller:planning_state:return_to_drop_zone initial_station_distance_m=2.044 maximum_reverse_distance_m=5.000",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:03.244663+00:00",
+      "topic": "/parking/private/reverse/status",
+      "received_monotonic_s": 23028.139345428,
+      "source_stamp": {
+        "sec": 1793617923,
+        "nanosec": 244391241
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617923,
+          "nanosec": 244391241
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "phase=PARKED charging=False detail=station XY goal reached",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:03.245234+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23028.139936964,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "parking_dispatcher:REVERSE_PARKED_WAITING_FOR_DOCK; reverse_parking_controller:PARKED:station XY goal reached; parking_method=reverse battery_percent=34.000000 charging_required=true forced=false attempt=5"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:03.245443+00:00",
+      "topic": "/parking/status",
+      "received_monotonic_s": 23028.14013397,
+      "source_stamp": {
+        "sec": 1793617923,
+        "nanosec": 244438859
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617923,
+          "nanosec": 244438859
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "REVERSE_PARKED_WAITING_FOR_DOCK",
+        "message": "parking_method=reverse battery_percent=34.000000 charging_required=true forced=false attempt=5 phase=REVERSE_PARKED_WAITING_FOR_DOCK",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:03.333075+00:00",
+      "topic": "/parking/status",
+      "received_monotonic_s": 23028.227760142,
+      "source_stamp": {
+        "sec": 1793617923,
+        "nanosec": 332784946
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617923,
+          "nanosec": 332784946
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "WAITING_FOR_PARKING_OWNER",
+        "message": "parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6 phase=WAITING_FOR_PARKING_OWNER",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:03.333503+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23028.228209254,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "parking_dispatcher:WAITING_FOR_PARKING_OWNER:parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:03.433548+00:00",
+      "topic": "/parking/private/reverse/status",
+      "received_monotonic_s": 23028.328235222,
+      "source_stamp": {
+        "sec": 1793617923,
+        "nanosec": 433058057
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617923,
+          "nanosec": 433058057
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE charging=False detail=cancel=parking_dispatcher:handoff:6",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:04.033727+00:00",
+      "topic": "/service/state",
+      "received_monotonic_s": 23028.928426456,
+      "source_stamp": null,
+      "data": {
+        "state": 10,
+        "state_name": "DROP_ZONE_PARKING",
+        "description": "apriltag_parking_controller:WAITING_FOR_TAG; parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6"
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:04.033960+00:00",
+      "topic": "/parking/status",
+      "received_monotonic_s": 23028.928651002,
+      "source_stamp": {
+        "sec": 1793617924,
+        "nanosec": 33099890
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617924,
+          "nanosec": 33099890
+        },
+        "module_name": "parking",
+        "level": 0,
+        "operating_state": "WAITING_FOR_TAG",
+        "message": "parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6 phase=WAITING_FOR_TAG",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:12:04.034126+00:00",
+      "topic": "/parking/private/apriltag/status",
+      "received_monotonic_s": 23028.928823269,
+      "source_stamp": {
+        "sec": 1793617924,
+        "nanosec": 33025657
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617924,
+          "nanosec": 33025657
+        },
+        "module_name": "apriltag_parking_controller",
+        "level": 0,
+        "operating_state": "WAITING_FOR_TAG",
+        "message": "phase=WAITING_FOR_TAG tag_distance_m=-1.000 axis_distance_m=1.796 lateral_m=-2.567 heading_rad=-0.147 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 charging=false",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:13:04.059779+00:00",
+      "topic": "/parking/private/apriltag/status",
+      "received_monotonic_s": 23088.95445481,
+      "source_stamp": {
+        "sec": 1793617984,
+        "nanosec": 59367314
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617984,
+          "nanosec": 59367314
+        },
+        "module_name": "apriltag_parking_controller",
+        "level": 2,
+        "operating_state": "ERROR",
+        "message": "phase=ERROR tag_distance_m=-1.000 axis_distance_m=1.796 lateral_m=-2.567 heading_rad=-0.147 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 charging=false",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    },
+    {
+      "kind": "ros_event",
+      "utc": "2026-11-02T11:13:04.060531+00:00",
+      "topic": "/parking/status",
+      "received_monotonic_s": 23088.955218207,
+      "source_stamp": {
+        "sec": 1793617984,
+        "nanosec": 59494229
+      },
+      "data": {
+        "stamp": {
+          "sec": 1793617984,
+          "nanosec": 59494229
+        },
+        "module_name": "parking",
+        "level": 2,
+        "operating_state": "ERROR",
+        "message": "parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=6 phase=ERROR error=phase=ERROR tag_distance_m=-1.000 axis_distance_m=1.796 lateral_m=-2.567 heading_rad=-0.147 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 charging=false",
+        "missing_nodes": [],
+        "missing_topics": [],
+        "missing_lifecycle_nodes": []
+      }
+    }
+  ],
+  "dom": {
+    "title": "Robot UI",
+    "url": "http://127.0.0.1:8010/",
+    "chargingPhase": null,
+    "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n34%\n2026년 11월 2일 월\n오후 08:14:33\n시스템\n시스템 오류\n임무\n운행 정지\n주차\n충전 도킹 중\n배터리\n배터리 부족 복귀 중 34%\n배달 서비스\n운행 정지\n\n운행이 정지되었습니다.\n\n이번 서비스\n127 m\n상세 보기 ›\n배송 목적지 선택\n\n빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.\n\n◀\nB7\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n배터리 잔량이 낮습니다. 복귀 요청이 확인되어 충전 구역으로 이동합니다.\n\n확인",
+    "buttons": [
+      {
+        "tag": "BUTTON",
+        "dataUi": null,
+        "text": "이번 서비스\n127 m\n상세 보기 ›",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": null,
+        "text": "◀",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B7",
+        "text": "B7",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B8",
+        "text": "B8",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B9",
+        "text": "B9",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B10",
+        "text": "B10",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B11",
+        "text": "B11",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B12",
+        "text": "B12",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": null,
+        "text": "▶",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-back-to-services",
+        "text": "← 서비스 선택",
+        "disabled": true,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": null,
+        "text": "확인",
+        "disabled": false,
+        "value": null
+      }
+    ]
+  },
+  "screenshot": {
+    "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_step/04_apriltag_timeout.png",
+    "bytes": 264557,
+    "sha256": "f334b4f19f835daa407c281da0d885eb04bfb5c7736078aa67f7b103f683809e"
+  },
+  "not_performed": [
+    "SOC restoration or35percent input",
+    "charger leave action",
+    "retry or forced Dock",
+    "charging override or syntheticfeedback",
+    "map/tag/timeout/safety changes"
+  ],
+  "limitation": "CARLA contact emulator would provide charging feedback; no real charger or hardware verification. Docking failed before contact due unavailable tag. Raw header stamps are retained separately from simulator clocks."
+}

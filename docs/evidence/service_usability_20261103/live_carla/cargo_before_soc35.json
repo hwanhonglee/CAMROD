@@ -1,0 +1,1 @@
+{"phase":"inactive","message":"정지했습니다. 새 작업은 다시 확인해 주세요.","can_leave":false,"cargo_access_ready":false,"battery_percentage":34,"minimum_battery_percentage":35.0,"platform_is_charging":true,"platform_feedback_fresh":true,"electrical_stop_available":false,"physical_disconnect_verified":false,"target_label":"drop_zone 내 대기 위치","blocked_reason":"배터리 35% 이상과 정상 차량 상태가 필요합니다."}

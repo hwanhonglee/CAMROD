@@ -1,0 +1,45 @@
+# HH_261103 - Compile only the proven simulator compatibility controller and its focused tests.
+cmake_minimum_required(VERSION 3.8)
+project(camrod_carla_service_test)
+set(CMAKE_CXX_STANDARD 17)
+find_package(ament_cmake REQUIRED)
+foreach(dependency rclcpp avg_msgs diagnostic_msgs geometry_msgs nav_msgs std_msgs std_srvs
+    tf2 tf2_ros tf2_geometry_msgs visualization_msgs)
+  find_package(${dependency} REQUIRED)
+endforeach()
+set(controller_dependencies rclcpp avg_msgs diagnostic_msgs geometry_msgs nav_msgs std_msgs std_srvs
+  tf2 tf2_ros tf2_geometry_msgs visualization_msgs)
+add_executable(apriltag_parking_controller_node src/apriltag_parking_controller_node.cpp)
+target_include_directories(apriltag_parking_controller_node PRIVATE vendor/include)
+ament_target_dependencies(apriltag_parking_controller_node ${controller_dependencies})
+target_compile_options(apriltag_parking_controller_node PRIVATE -Wall -Wextra -Wpedantic)
+install(TARGETS apriltag_parking_controller_node DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY launch config tools DESTINATION share/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE)
+install(FILES README.md CHARGING_GEOMETRY.md PROVENANCE.json DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_gtest(test_retry_policies test/test_retry_policies.cpp)
+  target_include_directories(test_retry_policies PRIVATE vendor/include)
+  ament_target_dependencies(test_retry_policies avg_msgs geometry_msgs)
+  ament_add_gtest(test_apriltag_initial_clearance test/test_apriltag_initial_clearance.cpp)
+  target_include_directories(test_apriltag_initial_clearance PRIVATE vendor/include)
+  ament_target_dependencies(test_apriltag_initial_clearance ${controller_dependencies})
+  target_compile_options(test_apriltag_initial_clearance PRIVATE -O0 -g0)
+  # HH_261103 - Initialize the copied controller tests outside every live robot/simulator DDS domain.
+  set_tests_properties(test_apriltag_initial_clearance PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=215;ROS_LOCALHOST_ONLY=1")
+  ament_add_pytest_test(test_launch_contract test/test_launch_contract.py)
+  ament_add_pytest_test(test_charging_geometry test/test_charging_geometry.py)
+  ament_add_pytest_test(test_portable_overlay test/test_portable_overlay.py)
+  # HH_261103 - Execute the real boundary and current native cargo target against the separate charging anchor.
+  find_package(camrod_sensor_kit REQUIRED)
+  add_executable(check_charging_geometry test/check_charging_geometry.cpp)
+  target_include_directories(check_charging_geometry PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../camrod_control/include")
+  ament_target_dependencies(check_charging_geometry camrod_sensor_kit)
+  target_compile_options(check_charging_geometry PRIVATE -UNDEBUG)
+  add_test(NAME check_charging_geometry COMMAND check_charging_geometry)
+endif()
+ament_package()

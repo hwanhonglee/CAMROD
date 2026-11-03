@@ -1,0 +1,94 @@
+"""HH_261103 - Historical host-specific executed staging source; archived, not a portable entrypoint."""
+from __future__ import print_function
+
+import json
+import math
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(os.environ.get('RANGER_CARLA_ROOT', '/home/hong/Downloads/ranger-carla-4ws-pipeline'))
+sys.path.insert(0, str(ROOT / 'tools'))
+import ue_stage_woraksan_v224_dropzone as stage
+
+SOURCE_NAME = 'Woraksan_v27_service_tag_20261102'
+TARGET_NAME = 'Woraksan_v27_charge_anchor_20261103'
+SOURCE_SHA = '0a8b39d286ae61607ce98e88401e33d5b9220551212219d1b21baff23171df9e'
+ORIGINAL_SHA = '1af1a6d160f8ee24a97294b104e5be9ca6aec767fc456abcf51f43a0ee4b1343'
+SEPARATION_M = 0.60
+STATION_XY = (-8.47366, 40.391)
+BODY_YAW_DEG = 91.7873
+MAP_YAW_RAD = 8.142811119961662e-7
+REPORT_ROOT = ROOT / '.work/evidence/service_usability_tag_alignment_20261103'
+NORMAL_STATION = Path('/home/hong/camrod_ws/src/camrod_map/config/drop_zones.yaml')
+NEW_NORMAL_STATION = Path('/home/hong/camrod_service_test_ws/src/camrod_map/config/drop_zones.yaml')
+ROBOT_PARAMS = Path('/home/hong/camrod_ws/src/camrod_sensor_kit/config/robot_params.yaml')
+
+
+def geometry():
+    yaw = math.radians(BODY_YAW_DEG)
+    dx, dy = -SEPARATION_M * math.cos(yaw), -SEPARATION_M * math.sin(yaw)
+    c, s = math.cos(MAP_YAW_RAD), math.sin(MAP_YAW_RAD)
+    return {'normal_station_ros_xy_m': STATION_XY,
+            'charging_body_ros_xy_m': (STATION_XY[0] + dx, STATION_XY[1] + dy),
+            'body_yaw_ros_deg': BODY_YAW_DEG, 'charging_behind_station_m': SEPARATION_M,
+            'translation_ue_cm': (100 * (c * dx + s * dy), -100 * (-s * dx + c * dy), 0.0),
+            'rotation_degrees': 0.0, 'preserve_absolute_tag_z': True,
+            'cargo_position_tolerance_m': .20, 'unchanged_contact_radius_m': .35,
+            'minimum_nominal_charger_gap_at_cargo_stop_m': SEPARATION_M - .20,
+            'optical_depth_at_docked_body_m': .40,
+            'range_limit_note': '.40 is retained optical depth; native completion uses measured 3D camera norm'}
+
+
+def configure():
+    old = json.loads((ROOT / '.work/evidence/service_usability_tag_alignment_20261102/apply.json').read_text())
+    source_center = stage.exact._v3(old['target_tag_records'][stage.exact.TAG_WHITE_LABEL]['contract']['transform']['location_cm'])
+    stage.SOURCE_NAME, stage.TARGET_NAME = SOURCE_NAME, TARGET_NAME
+    stage.SOURCE_PACKAGE = '/Game/map_package/Maps/{0}/{0}'.format(SOURCE_NAME)
+    stage.TARGET_PACKAGE = '/Game/map_package/Maps/{0}/{0}'.format(TARGET_NAME)
+    stage.SOURCE_CENTER_CM = source_center
+    stage.DELTA_CM = geometry()['translation_ue_cm']
+    stage.MODE_ENV, stage.TOKEN_ENV = 'RANGER_CHARGING_TAG_MODE', 'RANGER_CHARGING_TAG_APPLY'
+    stage.APPLY_TOKEN = 'APPLY_CLONED_EXACT46_SEPARATE_CHARGING_ANCHOR'
+    mode = os.environ.get(stage.MODE_ENV, 'PLAN').upper()
+    output = Path(os.environ.get('RANGER_CHARGING_TAG_REPORT', str(REPORT_ROOT / (mode.lower() + '.json'))))
+    # HH_261103 - Existing stage helper owns all scene edits and exact invariant checks; only its fresh selections change.
+    os.environ['RANGER_WORAKSAN_V224_DROPZONE_REPORT'] = str(output)
+    return mode, output
+
+
+def execute():
+    mode, output = configure()
+    content = Path(stage.project_root()) / 'Content'
+    source = stage.exact._map_sidecars(str(content), stage.SOURCE_PACKAGE, SOURCE_NAME)
+    original_name = 'Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone'
+    original = content / 'map_package/Maps' / original_name / (original_name + '.umap')
+    protected = {'frozen_original_v224_map': str(original), 'frozen_nov2_tag_scene': source['map'],
+                 'native_normal_station': str(NORMAL_STATION), 'new_native_normal_station': str(NEW_NORMAL_STATION),
+                 'canonical_robot_params': str(ROBOT_PARAMS)}
+    before = stage.records(protected)
+    if before['frozen_nov2_tag_scene']['sha256'] != SOURCE_SHA or before['frozen_original_v224_map']['sha256'] != ORIGINAL_SHA:
+        raise stage.StageAbort('frozen source scene bytes drifted')
+    if mode == 'APPLY':
+        plan = json.loads((REPORT_ROOT / 'plan.json').read_text())
+        if plan['charging_geometry_protected_files'] != before:
+            raise stage.StageAbort('native station/robot/source changed since PLAN')
+    stage.execute()
+    after = stage.records(protected)
+    if before != after:
+        raise stage.StageAbort('frozen source/native station/robot bytes changed')
+    result = json.loads(output.read_text())
+    result.update(stage_helper_schema=result['schema'], schema='camrod.service_charging_geometry.stage.v1',
+                  charging_geometry=geometry(), charging_geometry_protected_files=after,
+                  charging_geometry_entrypoint_sha256=stage.base.sha256_file(__file__),
+                  native_normal_station_bytes_unchanged=True, earlier_scene_bytes_unchanged=True)
+    if result['status'] == 'APPLIED':
+        result.update(source_disk_reload_contract_unchanged=result['map_change']['source_disk_reload_contract_unchanged'],
+                      non_tag_actor_contracts_unchanged=result['map_change']['non_tag_actor_contracts_unchanged'],
+                      target_disk_reload_verified=result['map_change']['target_disk_reload_verified'])
+    stage.base.write_report(str(output), result)
+    print('CHARGING_GEOMETRY {} report={}'.format(result['status'], output))
+
+
+if __name__ == '__main__':
+    raise SystemExit('Historical audit source only. Provision and verify scene assets/receipts with this host\'s official pipeline tooling; do not execute this archived host-pinned script.')

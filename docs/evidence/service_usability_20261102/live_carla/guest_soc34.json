@@ -1,0 +1,49 @@
+{
+  "schema": "camrod.live_carla.guest_soc34_observation.v1",
+  "HH_261102": "Retain actual passive Guest DOM and PNG evidence without sending a service command.",
+  "captured_utc": "2026-11-02T11:03:36Z",
+  "scope": "Actual existing Guest browser page via local CDP; no click, dispatch, SOC mutation, or new service WebSocket.",
+  "dom": {
+    "title": "국립공원 로봇 서비스",
+    "url": "http://127.0.0.1:8012/",
+    "visibility": "visible",
+    "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n34%\n배터리\n35% 이상 충전 후 호출해 주세요.\n배터리·주차 자세히\n로봇 상태\n운행 정지\n로봇 운행이 정지되었습니다\n로봇 화면에서 상태를 확인해 주세요.",
+    "controls": [
+      {"tag":"BUTTON","id":"","text":"다시 시도","disabled":false,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"취소","disabled":false,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"호출","disabled":false,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B1","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B2","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B3","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B4","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B5","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B6","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B7","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B8","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B9","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B10","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B11","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B12","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"","text":"B13","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"navigateBtn","text":"사이트 선택 후 호출","disabled":true,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"completeAction","text":"\n      짐 싣기 완료 · 복귀\n    ","disabled":false,"ariaDisabled":null,"value":"","visible":false},
+      {"tag":"BUTTON","id":"cancelMissionBtn","text":"\n      운행 취소\n    ","disabled":false,"ariaDisabled":null,"value":"","visible":false}
+    ],
+    "guestState": {"battery":34,"missionGeneration":0,"socketOpen":true}
+  },
+  "capture": {
+    "visibility": "visible",
+    "focused": true,
+    "x": 80,
+    "y": 64,
+    "width": 910,
+    "height": 1016,
+    "captured_at_utc": "2026-11-02T11:03:36Z",
+    "png": {
+      "path": "guest_soc34.png",
+      "sha256": "228ff4ec813490df74057a4bd9174008e880c53e5aae7140b6b926a1fe522bc4",
+      "bytes": 186428
+    }
+  },
+  "limitation": "The visible OPERATOR_STOPPED page hides site/call controls. The DOM has all B1-B13 and navigateBtn disabled, but this is not a visible enabled-button click/rejection trial or an otherwise-ready idle Guest screen."
+}

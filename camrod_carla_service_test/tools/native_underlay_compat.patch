@@ -1,0 +1,41 @@
+diff --git a/colcon_build.sh b/colcon_build.sh
+--- a/colcon_build.sh
++++ b/colcon_build.sh
+@@ -335,6 +335,24 @@
+ 
+ # HH_260428 - Sanitize stale install paths from prefix vars to avoid picking up
+ # packages from a previous build that no longer exists on disk.
++# HH_261103 - Keep only explicitly allowed CARLA underlays in this isolated test copy; empty preserves native filtering.
++_is_allowed_extra_prefix() {
++  local candidate="$1" root candidate_real root_real
++  # HH_260825 - An explicit empty array is required under `set -u`; a machine
++  # without CARLA underlays must still build the ordinary CAMROD graph.
++  local allowed_roots=()
++  candidate_real="$(readlink -m "${candidate}")"
++  IFS=':' read -r -a allowed_roots <<< "${CAMROD_EXTRA_PREFIX_ROOTS:-}"
++  for root in "${allowed_roots[@]}"; do
++    [[ -n "${root}" ]] || continue
++    root_real="$(readlink -m "${root}")"
++    case "${candidate_real}" in
++      "${root_real}"|"${root_real}"/*) return 0 ;;
++    esac
++  done
++  return 1
++}
++
+ sanitize_path_var() {
+   local var_name="$1"
+   local raw="${!var_name:-}" out="" item pkg_name manifest
+@@ -342,7 +360,11 @@
+   for item in "${parts[@]}"; do
+     [[ -z "${item}" ]] && continue
+     [[ -d "${item}" ]] || continue
+-    if [[ "${item}" != /opt/ros/* && "${item}" != "${WS_ROOT}/install/"* ]]; then continue; fi
++    if [[ "${item}" != /opt/ros/* && \
++          "${item}" != "${WS_ROOT}/install/"* ]] && \
++       ! _is_allowed_extra_prefix "${item}"; then
++      continue
++    fi
+     if [[ "${item}" == "${WS_ROOT}/install/"* ]]; then
+       pkg_name="$(basename "${item}")"
+       manifest="${item}/share/${pkg_name}/package.xml"

@@ -1,0 +1,134 @@
+{
+  "schema": "camrod.live_carla.aligned_station_return_block.v1",
+  "HH_261102": "Keep a station-only route-admission block distinct from a docking failure.",
+  "captured_utc": "2026-11-02T11:34:10.818134+00:00",
+  "status": "BLOCKED_BEFORE_PARKING_NO_DOCK_ATTEMPT",
+  "state": {
+    "ready": true,
+    "ready_message": "ready",
+    "service_state_name": "OPERATOR_STOPPED",
+    "battery_percentage": 80,
+    "platform_is_charging": false,
+    "mission_dispatch_active": false,
+    "mission_dispatch_generation": 0
+  },
+  "controllers": [
+    {
+      "name": "control",
+      "level": 0,
+      "message": "phase=IDLE site= service_mode=turnaround recall_turnaround_return=False battery_urgent_return=False return_source= crab_speed_mps=0.67 return_published=False return_ack=False"
+    },
+    {
+      "name": "parking",
+      "level": 0,
+      "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=4 phase=IDLE"
+    }
+  ],
+  "motion": {
+    "speed_mps": 1.5581675296197098e-07,
+    "vx_mps": 7.90856800217339e-08,
+    "vy_mps": -1.3425466740159096e-07,
+    "yaw_rate_rps": 3.75625703361922e-10,
+    "frame_id": "odom",
+    "age_s": 0.041
+  },
+  "pose": {
+    "x": -8.492698396668949,
+    "y": 40.28740469334937,
+    "yaw": 1.5845369217442062,
+    "frame_id": "map",
+    "age_s": 0.014
+  },
+  "dom": {
+    "title": "Robot UI",
+    "url": "http://127.0.0.1:8010/",
+    "chargingPhase": null,
+    "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n80%\n2026년 11월 2일 월\n오후 08:34:10\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 80%\n배달 서비스\n주행 화면 보기\n운행 정지\n\n운행이 정지되었습니다.\n\n배송 목적지 선택\n\n빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.\n\n◀\nB7\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택",
+    "buttons": [
+      {
+        "tag": "BUTTON",
+        "dataUi": "open-driving-display",
+        "text": "주행 화면 보기",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": null,
+        "text": "◀",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B7",
+        "text": "B7",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B8",
+        "text": "B8",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B9",
+        "text": "B9",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B10",
+        "text": "B10",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B11",
+        "text": "B11",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-site-B12",
+        "text": "B12",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": null,
+        "text": "▶",
+        "disabled": false,
+        "value": null
+      },
+      {
+        "tag": "BUTTON",
+        "dataUi": "operator-back-to-services",
+        "text": "← 서비스 선택",
+        "disabled": false,
+        "value": null
+      }
+    ]
+  },
+  "screenshot": {
+    "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/dock_tag_aligned/01_station_return_blocked.png",
+    "bytes": 470982
+  },
+  "root_reported_native_log": "delaying drop-zone return route lanelet/vehicle distance2.13>1.50",
+  "scope": "Normal station Return after OPERATOR_STOPPED, without active mission, did not create native parking handoff. Tag visibility was independently proved but does not imply dock success. The PNG and state in this file were captured AFTER root had stopped the blocked Return and restored SOC80; they are NOT a screenshot of the prior RETURNING/SOC34 state. watch_01.jsonl and the earlier part of watch_02.jsonl retain that actual blocked state.",
+  "not_performed": [
+    "control command by observer",
+    "SOC change by observer",
+    "forced docking",
+    "fake DropZoneWait",
+    "guard adjustment",
+    "retry"
+  ]
+}

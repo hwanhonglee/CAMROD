@@ -62,3 +62,9 @@ disable/vio_bridge/sdk_installers/*.deb
 # Node.js / frontend build artifacts
 node_modules/
 # HH_260721 - The active UI tree is camrod_ui_robot/assets/frontend; retire legacy runtime paths.
+
+# HH_261103 - Publish lossless JSONL archives and curated real PNG/GIF; keep full raw videos on the evidence host.
+/docs/evidence/service_usability_20261102/live_carla/**/*.jsonl
+/docs/evidence/service_usability_20261102/live_carla/**/*.mp4
+/docs/evidence/service_usability_20261103/**/*.jsonl
+/docs/evidence/service_usability_20261103/**/*.mp4

@@ -1,0 +1,23 @@
+{
+  "schema": "camrod.live_carla.battery_trial_stimulus.v1",
+  "HH_261102": "Keep the authorized CARLA SOC stimulus distinct from measured charging feedback.",
+  "environment": "CARLA simulation, runtime2 actor2, ROS_DOMAIN_ID188 ROS_LOCALHOST_ONLY1",
+  "mission": {"site":"B7","intent":"delivery","generation":1793617261427001},
+  "precondition": {"service_state_name":"WAITING_FOR_RETURN_REQUEST","ready":true,"battery_percentage":80,"mission_dispatch_active":true},
+  "soc_topic_graph_before_input": {
+    "topic":"/camrod_carla/platform_heartbeat/soc",
+    "type":"std_msgs/msg/Float32",
+    "publisher_count":0,
+    "subscribers":["carla_platform_heartbeat","carla_battery_evidence_observer"]
+  },
+  "command": "bash docs/evidence/service_usability_20261102/live_carla/runtime.sh ros ros2 topic pub --once /camrod_carla/platform_heartbeat/soc std_msgs/msg/Float32 '{data: 0.34}'",
+  "published_inputs_in_this_trial": [0.34],
+  "observed_input": {
+    "observer":"../battery_live_02.jsonl",
+    "utc":"2026-11-02T11:08:04.094516+00:00",
+    "received_monotonic_s":22788.989210045,
+    "float32_fraction":0.3400000035762787
+  },
+  "observed_before_return": {"battery_percentage":34,"platform_is_charging":false,"battery_return_pending":true,"ready":true,"mission_dispatch_generation":1793617261427001},
+  "not_performed": ["charging override","synthetic platform feedback","motion command publication","SOC restoration","map or safety-limit change"]
+}

@@ -1,0 +1,320 @@
+{
+  "schema": "camrod.actual04.visual_derivatives.v1",
+  "scope": "Frozen actual04 only; no AI images, UI modifications, fake camera frames or later-cycle footage.",
+  "source_video_probe": {
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "r_frame_rate": "5/1",
+        "avg_frame_rate": "5/1",
+        "nb_frames": "1800"
+      }
+    ],
+    "format": {
+      "start_time": "0.000000",
+      "duration": "360.000000",
+      "tags": {}
+    }
+  },
+  "sources": [
+    {
+      "name": "live_desktop.mp4",
+      "sha256": "d9f0cb08a43ec4d4e2983d63c2a595619e9708c66fbbee16a3ec6996ce09611d"
+    },
+    {
+      "name": "result.json",
+      "sha256": "58b1869400f778ed034b5e7ca8b2d0611d3f9996b5054399799e323883ec441a"
+    },
+    {
+      "name": "make_visuals.py",
+      "sha256": "c44435fdd092f139767ba11a64779ee1b802ed56d255e91bb50ebeaaaf1240b1"
+    }
+  ],
+  "photos": [
+    {
+      "file": "01_arrival_soc34.png",
+      "capture_utc_from_result": "2026-11-03T07:52:29.225253+00:00",
+      "phase": "IDLE",
+      "service_state": "WAITING_FOR_RETURN_REQUEST",
+      "charging": false,
+      "sha256": "ce723bc771cb79cca2798b3578fa888962351129a13ebdfa79d06b596c2e9692"
+    },
+    {
+      "file": "02_return_requested.png",
+      "capture_utc_from_result": "2026-11-03T07:52:30.342970+00:00",
+      "phase": "IDLE",
+      "service_state": "WAITING_FOR_RETURN_REQUEST",
+      "charging": false,
+      "sha256": "9b0aba54affb48564fb1b58e49c9344d763b74728bf8068051e8310bf7680c2a"
+    },
+    {
+      "file": "03_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:52:31.259027+00:00",
+      "phase": "IDLE",
+      "service_state": "RETURNING_TO_DROP_ZONE",
+      "charging": false,
+      "sha256": "77de13fb9640d99493531ce4eb4a0148960b2e1b86d016f3796b5a7178cebf19"
+    },
+    {
+      "file": "04_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:52:32.023510+00:00",
+      "phase": "IDLE",
+      "service_state": "RETURN_WITH_CARGO",
+      "charging": false,
+      "sha256": "1a9ec9946fb2bae49f03782c5a6bc7aa8f8221c937e9036c6e05ca4db85a661e"
+    },
+    {
+      "file": "05_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:53:45.248670+00:00",
+      "phase": "IDLE",
+      "service_state": "DROP_ZONE_PARKING",
+      "charging": false,
+      "sha256": "e65e28d73d662c9a0a578aa1257428be71b8c480ce2e3f4ebc0545d505b042c4"
+    },
+    {
+      "file": "06_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:53:55.676659+00:00",
+      "phase": "REVERSE_APPROACH",
+      "service_state": "DROP_ZONE_PARKING",
+      "charging": false,
+      "sha256": "15925b5136976fcccc597feff6d37af2522f54d3ae4e48db14164ae32644bb3a"
+    },
+    {
+      "file": "07_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:03.033623+00:00",
+      "phase": "WAITING_FOR_PARKING_OWNER",
+      "service_state": "DROP_ZONE_PARKING",
+      "charging": false,
+      "sha256": "514d54ff029ca0958bdb9a6f8229bb436d20e8d525c74a0ca0d57e760962f3a6"
+    },
+    {
+      "file": "08_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:03.749276+00:00",
+      "phase": "WAITING_FOR_TAG",
+      "service_state": "DROP_ZONE_PARKING",
+      "charging": false,
+      "sha256": "7f802a14a114c4fb457a78fb2219d55d53dc7c4427a22c4b1ef5281c471cd6e8"
+    },
+    {
+      "file": "09_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:08.003015+00:00",
+      "phase": "TAG_GUIDED_REVERSE",
+      "service_state": "DROP_ZONE_PARKING",
+      "charging": false,
+      "sha256": "b9439f5d34002985e422bd12616439de664635899b624d20c90d0a7fdac658f9"
+    },
+    {
+      "file": "10_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:19.927947+00:00",
+      "phase": "FINAL_YAW_ALIGNMENT",
+      "service_state": "DROP_ZONE_PARKING",
+      "charging": false,
+      "sha256": "bbc8e7618aab3b1537b306da802a993f277a4e0ff13a46d42aa847a5986e27b9"
+    },
+    {
+      "file": "11_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:20.634670+00:00",
+      "phase": "FINAL_YAW_ALIGNMENT",
+      "service_state": "WAITING_FOR_CHARGING",
+      "charging": false,
+      "sha256": "5ddac1b3131135932386a0ff12ad5fff3987ecfd202ece1bd245a35992fa5f43"
+    },
+    {
+      "file": "12_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:21.429024+00:00",
+      "phase": "WAITING_FOR_CHARGING",
+      "service_state": "WAITING_FOR_CHARGING",
+      "charging": false,
+      "sha256": "8158f7d9eaedaa97d086113fab06b27c3382d6b081404954a31650c1cfbe1d9e"
+    },
+    {
+      "file": "13_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:31.402835+00:00",
+      "phase": "WAITING_FOR_CHARGING",
+      "service_state": "CHARGING",
+      "charging": true,
+      "sha256": "068811cc293e7576ccae541ef2703c88fdf7e996b7ff7a706cdc421816d198c3"
+    },
+    {
+      "file": "14_stage.png",
+      "capture_utc_from_result": "2026-11-03T07:54:31.998711+00:00",
+      "phase": "PARKED",
+      "service_state": "CHARGING",
+      "charging": true,
+      "sha256": "c3d6053682eed69718bb479f6dade66b8a7db9d796cfc0790fa42cd9a19dfd9f"
+    },
+    {
+      "file": "15_actual_charging.png",
+      "capture_utc_from_result": "2026-11-03T07:54:33.631746+00:00",
+      "phase": "PARKED",
+      "service_state": "CHARGING",
+      "charging": true,
+      "sha256": "c3d6053682eed69718bb479f6dade66b8a7db9d796cfc0790fa42cd9a19dfd9f"
+    }
+  ],
+  "source_clip": {
+    "start_offset_s": 100,
+    "end_offset_s": 160,
+    "fps": 5,
+    "speed": "1x",
+    "absolute_utc_mapping": "not established by MP4 metadata"
+  },
+  "phase_gif_limit": "Captured PNG montage; nonuniform source gaps; fixed 1.5 seconds/photo and final3 seconds.",
+  "continuous_gif_limit": "Continuous 60-second desktop excerpt only; scaled/color-quantized looping GIF, not full mission or mechanical charger proof.",
+  "commands": [
+    [
+      "ffprobe",
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration,start_time:stream=codec_name,width,height,r_frame_rate,avg_frame_rate,nb_frames:format_tags=creation_time",
+      "-of",
+      "json",
+      "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/live_desktop.mp4"
+    ],
+    [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-n",
+      "-threads",
+      "2",
+      "-ss",
+      "100",
+      "-t",
+      "60",
+      "-i",
+      "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/live_desktop.mp4",
+      "-vf",
+      "fps=5,scale=768:-1:flags=lanczos,pad=iw:ih+36:0:36:black,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='ACTUAL04 continuous source +100 to +160 s | 5 fps | 1x':x=12:y=9:fontsize=15:fontcolor=white,palettegen=max_colors=64:stats_mode=diff",
+      "-frames:v",
+      "1",
+      "-update",
+      "1",
+      "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/dock_clip_palette_768.png"
+    ],
+    [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-n",
+      "-threads",
+      "2",
+      "-ss",
+      "100",
+      "-t",
+      "60",
+      "-i",
+      "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/live_desktop.mp4",
+      "-i",
+      "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/dock_clip_palette_768.png",
+      "-filter_complex_threads",
+      "2",
+      "-filter_complex",
+      "[0:v]fps=5,scale=768:-1:flags=lanczos,pad=iw:ih+36:0:36:black,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='ACTUAL04 continuous source +100 to +160 s | 5 fps | 1x':x=12:y=9:fontsize=15:fontcolor=white[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle",
+      "-an",
+      "-loop",
+      "0",
+      "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/autodock_continuous_100_160_768.gif"
+    ]
+  ],
+  "inspection_frames": [
+    {
+      "file": "video_at_100s.png",
+      "source_offset_s": 100,
+      "sha256": "4118d851fd0982f010ad44c2683ee945dd8d28c0fbf9ac0f732e7404a00b09bc",
+      "command": [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-n",
+        "-ss",
+        "100",
+        "-i",
+        "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/live_desktop.mp4",
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=960:-1",
+        "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/video_at_100s.png"
+      ]
+    },
+    {
+      "file": "video_at_130s.png",
+      "source_offset_s": 130,
+      "sha256": "1362196a11a4333e5c145c05b6e8f77d5096cb9a4c67fca44efb9f1c15be0e85",
+      "command": [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-n",
+        "-ss",
+        "130",
+        "-i",
+        "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/live_desktop.mp4",
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=960:-1",
+        "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/video_at_130s.png"
+      ]
+    },
+    {
+      "file": "video_at_160s.png",
+      "source_offset_s": 160,
+      "sha256": "b70aabc655369e17a1a9949a064fe05ffdb9f18233140db1009b5436f974084e",
+      "command": [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-n",
+        "-ss",
+        "160",
+        "-i",
+        "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/live_desktop.mp4",
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=960:-1",
+        "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/battery_cycle_04/video_at_160s.png"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "file": "phase_progress.gif",
+      "sha256": "0fb2011e99ad63780d5e4d6832d61daa7fca36276e752f43eebc81213cb017d5",
+      "bytes": 1462178,
+      "width": 960,
+      "height": 1120,
+      "frames": 15,
+      "playback_duration_ms": 24000
+    },
+    {
+      "file": "autodock_continuous_100_160_768.gif",
+      "sha256": "fb29a3724833e1594dfc6402b05ad9585907fb6e377f13e8d96b93859e9749af",
+      "bytes": 10563751,
+      "width": 768,
+      "height": 468,
+      "frames": 300,
+      "playback_duration_ms": 60000
+    }
+  ],
+  "rejected_intermediates": [
+    {
+      "file": "autodock_continuous_100_160.gif",
+      "reason": "First960px render exceeded15MiB; removed with root authorization after final768px output verification. Original MP4 and all PNGs retained.",
+      "status": "removed_superseded_generated_output",
+      "bytes": 21673770,
+      "sha256": "e6c22ff834304d9ec1351ccb1f50aeff06779b85fb5ea1996630c76a760f8d98"
+    }
+  ]
+}

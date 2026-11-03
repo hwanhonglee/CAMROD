@@ -1,0 +1,13 @@
+Run / actual case,BBox gap cm,Raw F1 min m,Raw F2 min m,Filtered points,Radar H/N/U,Guard H/N/U,Both H/N/U
+"actual_02
+front_10cm",10.0000,0.400–0.408,0.389–0.403,1246–1304,0 / 23 / 2,24 / 0 / 1,22 / 0 / 3
+"actual_02
+front_20cm",20.0004,0.499–0.511,0.489–0.501,938–971,0 / 23 / 2,0 / 24 / 1,0 / 22 / 3
+"actual_02
+front_30cm",30.0002,0.598–0.608,0.587–0.601,750–771,0 / 25 / 0,0 / 24 / 1,0 / 24 / 1
+"actual_02
+front_40cm",40.0001,0.697–0.712,0.686–0.702,622–641,0 / 23 / 2,0 / 24 / 1,0 / 22 / 3
+"actual_02
+roadside_left",20.0003,no return,no return,0–0,0 / 24 / 1,0 / 24 / 1,0 / 23 / 2
+"actual_02
+roadside_right",20.0005,no return,no return,0–0,0 / 23 / 2,0 / 24 / 1,0 / 22 / 3

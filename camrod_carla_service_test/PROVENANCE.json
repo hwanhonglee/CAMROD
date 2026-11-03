@@ -1,0 +1,83 @@
+{
+  "schema": "camrod.carla_service_test.vendor_provenance.v1",
+  "HH_261103": "Keep a portable private source copy of proven virtual docking compatibility without modifying the dirty source workspace.",
+  "source_workspace_recorded_for_audit_only": "/home/hong/camrod_ws/src",
+  "runtime_source_paths_required": false,
+  "runtime_adapter_dependency": "camrod_carla_adapter",
+  "files": [
+    {
+      "source": "camrod_control/src/apriltag_parking_controller_node.cpp",
+      "destination": "src/apriltag_parking_controller_node.cpp",
+      "source_sha256": "f51452ab90ece47c3657f1338666f72dd08bbec37bd535b647932576f89f88f3",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/include/camrod_control/apriltag_parking_retry.hpp",
+      "destination": "vendor/include/camrod_control/apriltag_parking_retry.hpp",
+      "source_sha256": "b790ee02b8bb57c0c96c4a59f0763d8fc396502d17869c56777fb71d88e5ceb7",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/include/camrod_control/parking_speed_profile.hpp",
+      "destination": "vendor/include/camrod_control/parking_speed_profile.hpp",
+      "source_sha256": "cc6693d5da70753e20f86f0fc8eb97295c2809e2f95ec5501cb0622b993a75cb",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/include/camrod_control/voice_announcement_gate.hpp",
+      "destination": "vendor/include/camrod_control/voice_announcement_gate.hpp",
+      "source_sha256": "52a3fffc50ad351b37d0ce8a520cb73f39248f179264c1f5a5ec8c9b29f8964a",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/include/camrod_control/yaw_alignment_settling.hpp",
+      "destination": "vendor/include/camrod_control/yaw_alignment_settling.hpp",
+      "source_sha256": "59bef8822d332181204dbef792f11ed8aa19fa8f295b915a6f3bfb8ee20333ce",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/include/camrod_control/motion_geometry.hpp",
+      "destination": "vendor/include/camrod_control/motion_geometry.hpp",
+      "source_sha256": "62e3751dda577b85c28e57e36d072c89463aad7b2ecd41e47c082a188bdea311",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/include/camrod_control/reverse_parking_axis.hpp",
+      "destination": "vendor/include/camrod_control/reverse_parking_axis.hpp",
+      "source_sha256": "59436517f7bac8b17a8b99f04d09241fb99c194a633e684c0d20079a54ff440b",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    },
+    {
+      "source": "camrod_control/test/test_apriltag_initial_clearance.cpp",
+      "destination": "test/test_apriltag_initial_clearance.cpp",
+      "source_sha256": "97d16c86eaabf57bdb371ae87175138c54a6c5e645f430ea34e16a1402fb24dd",
+      "adaptations": [
+        "HH_261103 provenance comment",
+        "DDS domain189→215 for isolated tests",
+        "HH_261103 observed0.392m-range/0.045m-lateral retry, default-off and exhausted-budget regressions"
+      ]
+    },
+    {
+      "source": "camrod_control/test/test_reverse_parking_axis.cpp",
+      "destination": "test/test_retry_policies.cpp",
+      "source_sha256": "c49d3b5d86e75c073155df8f326a72f68fbb216edd969dda7f9cce8a99df36ac",
+      "adaptations": [
+        "HH_261103 provenance comment"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+running develop
+Removing /home/hong/camrod_service_test_ws/install/camrod_ui/lib/python3.10/site-packages/camrod-ui.egg-link (link to runtime/python)
+running egg_info
+writing ../../build/camrod_ui/camrod_ui.egg-info/PKG-INFO
+writing dependency_links to ../../build/camrod_ui/camrod_ui.egg-info/dependency_links.txt
+writing entry points to ../../build/camrod_ui/camrod_ui.egg-info/entry_points.txt
+writing requirements to ../../build/camrod_ui/camrod_ui.egg-info/requires.txt
+writing top-level names to ../../build/camrod_ui/camrod_ui.egg-info/top_level.txt
+reading manifest file '../../build/camrod_ui/camrod_ui.egg-info/SOURCES.txt'
+writing manifest file '../../build/camrod_ui/camrod_ui.egg-info/SOURCES.txt'
+running build
+running build_py
+copying runtime/python/camrod_ui/ui_backend_node.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/driving_snapshot.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/__init__.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/safety_reset_api.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/mission_recorder_node.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/service_metrics.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/raw_can_capture.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/api_common.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/mission_journal.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/voice_departure_gate.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/battery_policy.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/charging_access_api.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/mission_recording_bridge.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/safety_reset.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/operator_ui_window.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/ui_state_policy.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/frontend_serving.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/service_metrics_migration.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+copying runtime/python/camrod_ui/ui_guest_node.py -> /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui
+running install
+running install_lib
+copying /home/hong/camrod_service_test_ws/build/camrod_ui/build/lib/camrod_ui/ui_backend_node.py -> /home/hong/camrod_service_test_ws/install/camrod_ui/lib/python3.10/site-packages/camrod_ui
+byte-compiling /home/hong/camrod_service_test_ws/install/camrod_ui/lib/python3.10/site-packages/camrod_ui/ui_backend_node.py to ui_backend_node.cpython-310.pyc
+running install_data
+copying runtime/resource/camrod_ui -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/ament_index/resource_index/packages
+copying package.xml -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui
+copying camrod_ui_robot/launch/ui.launch.py -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/launch
+copying camrod_ui_robot/launch/mission_recorder.launch.py -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/launch
+copying camrod_ui_guest/launch/ui_guest.launch.py -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/launch
+copying camrod_ui_robot/assets/frontend/build/월악산_만수계곡5.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_하늘재_역사2.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B11_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/information_nobg.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/Woraksan_national_park.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B13_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_영봉_코스_동창교_출발2.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B9_ste.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B8_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_송계계곡 산책1.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_만수계곡4.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_배치도_E.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_북바위산2.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B2_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_배치도_B.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B1_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B12_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/index.html -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/asset-manifest.json -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_영봉코스_덕주사_출발2.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/robot_gemini_nobg.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_덕주산성_1.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_영봉코스_덕주사_출발1.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_하늘재_역사1.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/Gemini_Generated_Image_s8ihhfs8ihhfs8ih.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B6_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_국립공원_로고.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_배치도_D.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B3_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_북바위산1.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_배치도_F.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_북바위산4.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_송계계곡 산책2.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B5_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_북바위산3.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B10_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_배치도_A.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/서비스_선택.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_만수계곡1.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B7_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/B4_site.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_배치도_C.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_영봉코스_동창교_출발1.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_만수계곡2.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_하늘재_역사3.JPG -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/월악산_만수계곡3.jpeg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/hiking_trail_nobg.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/로봇안전안내.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build
+copying camrod_ui_robot/assets/frontend/build/static/js/main.3a6fdc4a.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.361f76de.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.37824ebf.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.49df8044.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.74ed35f9.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.3a6fdc4a.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.361f76de.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.49df8044.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.b01cdf47.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.74ed35f9.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.361f76de.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.b8cd782f.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.49df8044.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.b8cd782f.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.d88fbf92.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.37824ebf.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.b01cdf47.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.b01cdf47.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.d88fbf92.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.37824ebf.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.c07701f3.js.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.d88fbf92.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.3a6fdc4a.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.c07701f3.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.74ed35f9.js.LICENSE.txt -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.c07701f3.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/js/main.b8cd782f.js -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js
+copying camrod_ui_robot/assets/frontend/build/static/css/main.f4da5088.css -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/css
+copying camrod_ui_robot/assets/frontend/build/static/css/main.81ba5c87.css -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/css
+copying camrod_ui_robot/assets/frontend/build/static/css/main.c25d1c85.css.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/css
+copying camrod_ui_robot/assets/frontend/build/static/css/main.81ba5c87.css.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/css
+copying camrod_ui_robot/assets/frontend/build/static/css/main.f4da5088.css.map -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/css
+copying camrod_ui_robot/assets/frontend/build/static/css/main.c25d1c85.css -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/css
+copying camrod_ui_robot/assets/frontend/build/guide/robot-stop.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/guide
+copying camrod_ui_robot/assets/frontend/build/guide/service-selection.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/guide
+copying camrod_ui_robot/assets/frontend/build/models/woraksan-side-wrap.README.md -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/ranger-navigation.glb -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/woraksan-side-wrap.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/ranger-navigation.provenance.json -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/ranger-driving-rear.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/woraksan-rear-wrap.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/ranger-driving-rear.provenance.json -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/woraksan-wrap-variants.README.md -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/woraksan-front-wrap.png -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_robot/assets/frontend/build/models/README.md -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/models
+copying camrod_ui_guest/assets/guest_frontend/index.html -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_guest/assets/guest_frontend
+copying camrod_ui_guest/assets/guest_frontend/월악산_국립공원_로고.jpg -> /home/hong/camrod_service_test_ws/install/camrod_ui/share/camrod_ui/camrod_ui_guest/assets/guest_frontend
+running install_egg_info
+removing '/home/hong/camrod_service_test_ws/install/camrod_ui/lib/python3.10/site-packages/camrod_ui-0.0.1-py3.10.egg-info' (and everything under it)
+Copying ../../build/camrod_ui/camrod_ui.egg-info to /home/hong/camrod_service_test_ws/install/camrod_ui/lib/python3.10/site-packages/camrod_ui-0.0.1-py3.10.egg-info
+running install_scripts
+Installing camrod_ui_window script to /home/hong/camrod_service_test_ws/install/camrod_ui/lib/camrod_ui
+Installing mission_recorder_node script to /home/hong/camrod_service_test_ws/install/camrod_ui/lib/camrod_ui
+Installing ui_backend_node script to /home/hong/camrod_service_test_ws/install/camrod_ui/lib/camrod_ui
+Installing ui_guest_node script to /home/hong/camrod_service_test_ws/install/camrod_ui/lib/camrod_ui
+writing list of installed files to '/home/hong/camrod_service_test_ws/build/camrod_ui/install.log'

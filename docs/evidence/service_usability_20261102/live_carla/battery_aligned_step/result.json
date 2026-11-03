@@ -1,0 +1,501 @@
+{
+  "schema": "camrod.live_carla.aligned_battery_cycle.v1",
+  "HH_261102": "Preserve the real normal-Return low-SOC docking sequence without forced Dock or synthetic charging.",
+  "started_utc": "2026-11-02T11:37:21.249927+00:00",
+  "generation": 1793618887001001,
+  "site": "B7",
+  "intent": "delivery",
+  "status": "FAILED_OR_BLOCKED",
+  "scope": "Actual CARLA tag-only test scene; not physical charger hardware.",
+  "screenshots": {
+    "01_arrival_soc34": {
+      "utc": "2026-11-02T11:37:26.042806+00:00",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_aligned_step/01_arrival_soc34.png",
+        "bytes": 726890
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n34%\n2026년 11월 2일 월\n오후 08:37:25\n시스템\n시스템 정상\n임무\n도착\n주차\n충전 도킹 필요\n배터리\n이용 완료 후 복귀 대기 34%\n배달 서비스\n\nB7\n\n배송 로봇이 사이트 내부 목적지에 도착했습니다.\n\n도착 완료 · 복귀\n이번 서비스\n63.5 m\n상세 보기 ›\n배송 목적지 선택\n\n빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.\n\n◀\nB7\nON\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n배송 물품을 모두 내린 후,\n[도착 완료 · 복귀] 버튼을 눌러주세요\n\n버튼을 누르면 로봇이 대기·충전 장소로 복귀합니다.\n\n도착 완료 · 복귀\n\n배터리 잔량이 낮습니다. 짐 처리를 마친 뒤 이용 완료 버튼을 눌러주세요. 완료 후 충전 도킹을 위해 복귀합니다.\n\n확인",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return",
+            "text": "도착 완료 · 복귀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n63.5 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7\nON",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-arrival-return-confirm",
+            "text": "도착 완료 · 복귀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "확인",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    "02_return_requested": {
+      "utc": "2026-11-02T11:37:27.155898+00:00",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_aligned_step/02_return_requested.png",
+        "bytes": 721648
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n34%\n다크\n운행 정지\n서비스 화면\n배터리 부족 복귀 중 34%\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n출발지로 복귀 중\n\n출발지로 복귀하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\nB7\nB9\nB11\nB12\nB13\n드롭존목적지\n외관 보기\n현재 미션 경로 수신 대기\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n현재 미션 경로 수신 대기\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\nB7\nB8\nB9\nB10\nB11\nB12\n\n배터리 잔량이 낮습니다. 복귀 요청이 확인되어 충전 구역으로 이동합니다.\n\n확인",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "다크",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "확인",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    "03_reverse": {
+      "utc": "2026-11-02T11:38:53.005449+00:00",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_aligned_step/03_reverse.png",
+        "bytes": 361333
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n34%\n다크\n운행 정지\n서비스 화면\n배터리 부족 복귀 중 34%\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n주차 진행 중\n\n출발지에 후진 주차하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\n외관 보기\n후진 주차 동작 중 · 전역 경로 일시 비표시\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n후진 주차 동작 중 · 전역 경로 일시 비표시\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n\n배터리 잔량이 낮습니다. 복귀 요청이 확인되어 충전 구역으로 이동합니다.\n\n확인",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "다크",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "확인",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    "04_apriltag": {
+      "utc": "2026-11-02T11:39:01.371053+00:00",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_aligned_step/04_apriltag.png",
+        "bytes": 291793
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "CAMROD\n월악산 국립공원\nDIAG OK\n34%\n다크\n운행 정지\n서비스 화면\n배터리 부족 복귀 중 34%\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n주차 진행 중\n\n출발지에 후진 주차하고 있습니다.\n\n복귀 위치\n출발지\n센서 상태\n3/3 수신\n드롭존목적지\n외관 보기\n후진 주차 동작 중 · 전역 경로 일시 비표시\n전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n후진 주차 동작 중 · 전역 경로 일시 비표시\n남은 거리\n—m\n예상 소요\n—분\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n\n배터리 잔량이 낮습니다. 복귀 요청이 확인되어 충전 구역으로 이동합니다.\n\n확인",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "다크",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "운행 정지",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "서비스 화면",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "외관 보기",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "확인",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    },
+    "failure": {
+      "utc": "2026-11-02T11:39:07.144081+00:00",
+      "image": {
+        "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/battery_aligned_step/failure.png",
+        "bytes": 266608
+      },
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "chargingPhase": null,
+        "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n34%\n2026년 11월 2일 월\n오후 08:39:06\n시스템\n시스템 오류\n임무\n운행 정지\n주차\n충전 도킹 중\n배터리\n배터리 부족 복귀 중 34%\n배달 서비스\n운행 정지\n\n운행이 정지되었습니다.\n\n이번 서비스\n127.3 m\n상세 보기 ›\n배송 목적지 선택\n\n빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.\n\n◀\nB7\nB8\nB9\nB10\nB11\nB12\n▶\n← 서비스 선택\n\n배터리 잔량이 낮습니다. 복귀 요청이 확인되어 충전 구역으로 이동합니다.\n\n확인",
+        "buttons": [
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "이번 서비스\n127.3 m\n상세 보기 ›",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "◀",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B7",
+            "text": "B7",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B8",
+            "text": "B8",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B9",
+            "text": "B9",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B10",
+            "text": "B10",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B11",
+            "text": "B11",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-site-B12",
+            "text": "B12",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "▶",
+            "disabled": false,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": "operator-back-to-services",
+            "text": "← 서비스 선택",
+            "disabled": true,
+            "value": null
+          },
+          {
+            "tag": "BUTTON",
+            "dataUi": null,
+            "text": "확인",
+            "disabled": false,
+            "value": null
+          }
+        ]
+      }
+    }
+  },
+  "soc_inputs": [
+    {
+      "utc": "2026-11-02T11:37:23.151186+00:00",
+      "monotonic_s": 24548.045914404,
+      "fraction": 0.34,
+      "exit_code": 0,
+      "stdout": "Tag-only test scene and unchanged source files verified from APPLIED receipt\npublisher: beginning loop\npublishing #1: std_msgs.msg.Float32(data=0.34)\n\n",
+      "stderr": "1793619445.084574 [188]       ros2: selected interface \"lo\" is not multicast-capable: disabling multicast\n"
+    }
+  ],
+  "native_observer": "../battery_live_03.jsonl",
+  "latest": {
+    "utc": "2026-11-02T11:39:07.144035+00:00",
+    "state": {
+      "ready": false,
+      "ready_message": "planning_not_ready:error_stop, control_gate_unhealthy:2, control_gate_state:fault_hold",
+      "service_state": 10,
+      "service_state_name": "DROP_ZONE_PARKING",
+      "service_state_description": "apriltag_parking_controller:TAG_GUIDED_REVERSE; parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=7",
+      "battery_percentage": 34,
+      "platform_is_charging": false,
+      "mission_dispatch_active": true,
+      "mission_dispatch_site": "B7",
+      "mission_dispatch_generation": 1793618887001001,
+      "battery_return_pending": true,
+      "battery_return_started": true,
+      "battery_return_urgent": false,
+      "mission_execution_error": "",
+      "engaged": true,
+      "operation_mode": "WAITING_FOR_READY",
+      "system_health": "ERROR",
+      "controllers": [
+        {
+          "name": "control",
+          "level": 0,
+          "message": "phase=DONE site=camping_site_7 service_mode=turnaround recall_turnaround_return=False battery_urgent_return=False return_source= crab_speed_mps=0.67 return_published=True return_ack=True"
+        },
+        {
+          "name": "parking",
+          "level": 2,
+          "message": "parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=7 phase=ERROR error=phase=ERROR tag_distance_m=0.392 axis_distance_m=1.005 lateral_m=0.045 heading_rad=-0.098 remaining_tag_m=0.000 configured_stop_tag_m=0.400 stop_reason=tag_range stop_trigger_tag_m=0.392 retry=0 charging=false"
+        }
+      ]
+    },
+    "driving": {
+      "ok": true,
+      "data": {
+        "schema_version": 1,
+        "connected": true,
+        "mission": {
+          "active": true,
+          "generation": 1793618887001001,
+          "intent": "delivery",
+          "site": "B7",
+          "service_state_name": "DROP_ZONE_PARKING",
+          "phase": "STOPPED",
+          "description": "apriltag_parking_controller:TAG_GUIDED_REVERSE; parking_method=apriltag battery_percent=34.000000 charging_required=true forced=false attempt=7"
+        },
+        "motion": {
+          "speed_mps": 0.002223953314450732,
+          "vx_mps": 0.0022229212000909873,
+          "vy_mps": -6.774719951732484e-05,
+          "yaw_rate_rps": 1.431965069315132e-05,
+          "frame_id": "odom",
+          "age_s": 0.198
+        },
+        "battery": {
+          "percentage": 34.00000035762787
+        },
+        "pose": {
+          "x": -8.53969936946567,
+          "y": 40.24201832644904,
+          "yaw": 1.680552795393865,
+          "frame_id": "map",
+          "age_s": 0.005
+        },
+        "progress": {
+          "remaining_distance_m": null,
+          "remaining_time_s": null,
+          "completion_pct": null,
+          "valid": false,
+          "reason": "waiting_or_maneuver"
+        }
+      },
+      "received_monotonic_s": 24652.038605009,
+      "request_started_monotonic_s": 24652.036509092
+    }
+  },
+  "error": "native controller reports ERROR; no automatic retry",
+  "completed_utc": "2026-11-02T11:39:07.321467+00:00",
+  "not_performed": [
+    "SOC restoration",
+    "35percent input",
+    "cargo leave",
+    "forced Dock",
+    "synthetic charging",
+    "safety changes",
+    "automatic retry"
+  ]
+}

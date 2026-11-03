@@ -1,0 +1,36 @@
+{
+  "utc": "2026-11-03T08:10:26.522318+00:00",
+  "monotonic_s": 98531.41705126,
+  "accepted": true,
+  "action": "usage_complete",
+  "frame": {
+    "usage_complete": true,
+    "site": "B7",
+    "mission_generation": 1793693264276001,
+    "recall_final_return": false
+  },
+  "source": "robot_ui:usage_complete",
+  "expected_ros_source": "robot_ui:usage_complete:site_exit_first",
+  "context": {
+    "mission_identity": {
+      "site": "B7",
+      "generation": 1793693264276001,
+      "owner": "operator",
+      "intent": "delivery"
+    },
+    "final_return": false
+  },
+  "transport": "visible_operator_page_websocket_via_cdp_input",
+  "interactions": [
+    {
+      "stage": "arrival complete and Return",
+      "selector": "[data-ui=\"operator-arrival-return-confirm\"]",
+      "x": 455.0,
+      "y": 585.516,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.3053358429897344
+    }
+  ]
+}

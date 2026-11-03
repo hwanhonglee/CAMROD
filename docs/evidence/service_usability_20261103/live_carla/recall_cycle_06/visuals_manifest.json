@@ -1,0 +1,71 @@
+{
+  "schema": "camrod.actual06.recall_visual_derivatives.v1",
+  "result_file": "result.json",
+  "result_sha256": "174c915a1b8f97d01b40d6072354bc5e1f08eee3c85c03f5e5fbc8b9e6c7ac64",
+  "result_status": "RECALL_TWO_CONFIRMATIONS_RETURN_PARKED_OBSERVED",
+  "generator_sha256": "5a69931d7d25f42cbdf09aa888db7ce66a88b6cb0fd3344cf2e3bab298656dbd",
+  "sources": [
+    {
+      "file": "01_phase.png",
+      "sha256": "08410dcbb8d71169b5bd219522fde0d964d70568b42c9e037bf0308bd467e6fb",
+      "utc_from_result": "2026-11-03T08:20:02.474380+00:00",
+      "source_gap_s": 0.0,
+      "label": "phase",
+      "service_state": "RECALL_TO_SITE_ROAD"
+    },
+    {
+      "file": "04_phase.png",
+      "sha256": "aaaceeb30d92f5f4352c1ce81f871cac1fdf7425d5c59a4d4a477cbfcd74e847",
+      "utc_from_result": "2026-11-03T08:21:17.427497+00:00",
+      "source_gap_s": 74.953117,
+      "label": "phase",
+      "service_state": "GUEST_LOADING_WAIT"
+    },
+    {
+      "file": "07_before_first.png",
+      "sha256": "a307513d9791159d6b51b92acdd50913d2b0e8208f6ce2cdfbeaac11c951d1e1",
+      "utc_from_result": "2026-11-03T08:21:23.462798+00:00",
+      "source_gap_s": 6.035301,
+      "label": "before_first",
+      "service_state": "GUEST_LOADING_WAIT"
+    },
+    {
+      "file": "08_phase.png",
+      "sha256": "bed4f908c13adf9195dbc57779aa9265e8ed8e3d455bb0719ecacd4b7e2b78fc",
+      "utc_from_result": "2026-11-03T08:21:25.021450+00:00",
+      "source_gap_s": 1.558652,
+      "label": "phase",
+      "service_state": "RETURN_WITH_CARGO"
+    },
+    {
+      "file": "13_before_final.png",
+      "sha256": "05318c12031aec0646c66f348e990dff6c8c2e23d84962ae06b815b09a64eb02",
+      "utc_from_result": "2026-11-03T08:21:59.308346+00:00",
+      "source_gap_s": 34.286896,
+      "label": "before_final",
+      "service_state": "GUEST_LOADING_WAIT"
+    },
+    {
+      "file": "14_final_reverse_parked.png",
+      "sha256": "0613cf00125383918c8da12e6bb520c5f785cd575900527b16e85f27668b5d4d",
+      "utc_from_result": "2026-11-03T08:23:35.142188+00:00",
+      "source_gap_s": 95.833842,
+      "label": "final_reverse_parked",
+      "service_state": "DROP_ZONE_WAIT"
+    }
+  ],
+  "command": [
+    "python3",
+    "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/recall_cycle_06/make_phase_gif.py"
+  ],
+  "output": {
+    "file": "phase_progress.gif",
+    "sha256": "af196c7a634300d49932cf15c8a0988bf42772fec73d034b67215ec18bac5e8f",
+    "bytes": 731247,
+    "width": 960,
+    "height": 1120,
+    "frames": 6,
+    "playback_duration_ms": 10500
+  },
+  "limits": "Six of14 actual PNGs, fixed1.5s/photo plus final3s; nonuniform gaps labelled. Not continuous motion, MP4, or physical charger proof."
+}

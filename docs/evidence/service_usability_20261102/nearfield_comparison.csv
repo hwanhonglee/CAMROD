@@ -1,0 +1,93 @@
+mode,scenario,body_clearance_m,sensor_range_m,commanded_vx,output_vx,blocked,reason,initial_stop_reason,latency_ms,hit_cells,radar_hit_cells,raw_guard_hit_cells,raw_point_count,upstream_lidar_fov_visible,expected_blocked,pass
+original_exclusions,body_10cm,0.1,0.183,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,body_10cm,0.1,0.183,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,1,True,True,True
+raw_guard,body_10cm,0.1,0.183,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+combined,body_10cm,0.1,0.183,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,30,29,1,1,True,True,True
+original_exclusions,body_20cm,0.2,0.282,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,1,True,True,True
+revised_radar,body_20cm,0.2,0.282,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,1,True,True,True
+raw_guard,body_20cm,0.2,0.282,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+combined,body_20cm,0.2,0.282,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,30,29,1,1,True,True,True
+original_exclusions,body_30cm,0.3,0.382,0.2,0.2,False,clear_output,cost_stop_latched:dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,1,True,False,True
+revised_radar,body_30cm,0.3,0.382,0.2,0.2,False,clear_output,cost_stop_latched:dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,1,True,False,True
+raw_guard,body_30cm,0.3,0.382,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+combined,body_30cm,0.3,0.382,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+original_exclusions,body_40cm,0.4,0.481,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,body_40cm,0.4,0.481,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+raw_guard,body_40cm,0.4,0.481,0.2,0.2,False,clear_output,dynamic_front_guard:lidar_front_guard,,0,0,0,1,True,False,True
+combined,body_40cm,0.4,0.481,0.2,0.2,False,clear_output,dynamic_front_guard:lidar_front_guard,,0,0,0,1,True,False,True
+original_exclusions,sensor_face_10cm,0.019499999999999962,0.1,0.2,0.2,False,clear_output,,,0,0,0,0,False,False,True
+revised_radar,sensor_face_10cm,0.019499999999999962,0.1,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,0,False,True,True
+raw_guard,sensor_face_10cm,0.019499999999999962,0.1,0.2,0.2,False,clear_output,,,0,0,0,0,False,False,True
+combined,sensor_face_10cm,0.019499999999999962,0.1,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,0,False,True,True
+original_exclusions,sensor_face_20cm,0.11950000000000005,0.2,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,sensor_face_20cm,0.11950000000000005,0.2,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,1,True,True,True
+raw_guard,sensor_face_20cm,0.11950000000000005,0.2,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+combined,sensor_face_20cm,0.11950000000000005,0.2,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,30,29,1,1,True,True,True
+original_exclusions,sensor_face_30cm,0.21949999999999992,0.3,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,1,True,True,True
+revised_radar,sensor_face_30cm,0.21949999999999992,0.3,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,29,29,0,1,True,True,True
+raw_guard,sensor_face_30cm,0.21949999999999992,0.3,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+combined,sensor_face_30cm,0.21949999999999992,0.3,0.2,0.0,True,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),dynamic_front:radar; radar_hit=channel_unknown(no_fresh_provenance),,30,29,1,1,True,True,True
+original_exclusions,sensor_face_40cm,0.3195,0.4,0.2,0.2,False,clear_output,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,1,True,False,True
+revised_radar,sensor_face_40cm,0.3195,0.4,0.2,0.2,False,clear_output,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,1,True,False,True
+raw_guard,sensor_face_40cm,0.3195,0.4,0.2,0.2,False,clear_output,dynamic_front_guard:lidar_front_guard,,0,0,0,1,True,False,True
+combined,sensor_face_40cm,0.3195,0.4,0.2,0.2,False,clear_output,cost_stop_latched:dynamic_front:radar:trigger_evidence_not_fresh; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,1,True,False,True
+original_exclusions,unknown_class_radar_no_return,0.2,,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,unknown_class_radar_no_return,0.2,,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+raw_guard,unknown_class_radar_no_return,0.2,,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+combined,unknown_class_radar_no_return,0.2,,0.2,0.0,True,dynamic_front_guard:lidar_front_guard,dynamic_front_guard:lidar_front_guard,,1,0,1,1,True,True,True
+original_exclusions,ground_only,,,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,ground_only,,,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+raw_guard,ground_only,,,0.2,0.2,False,clear_output,dynamic_front_guard:lidar_front_guard,,0,0,0,1,True,False,True
+combined,ground_only,,,0.2,0.2,False,clear_output,dynamic_front_guard:lidar_front_guard,,0,0,0,1,True,False,True
+original_exclusions,self_body_only,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+revised_radar,self_body_only,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+raw_guard,self_body_only,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+combined,self_body_only,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+original_exclusions,outside_body_width,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+revised_radar,outside_body_width,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+raw_guard,outside_body_width,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+combined,outside_body_width,,,0.2,0.2,False,clear_output,,,0,0,0,1,False,False,True
+original_exclusions,lidar_dropout,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+revised_radar,lidar_dropout,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+raw_guard,lidar_dropout,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,True,True
+combined,lidar_dropout,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,True,True
+original_exclusions,removed_obstacle_resume,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+revised_radar,removed_obstacle_resume,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+raw_guard,removed_obstacle_resume,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+combined,removed_obstacle_resume,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+original_exclusions,radar_dropout,,,0.2,0.0,True,sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,0,,True,True
+revised_radar,radar_dropout,,,0.2,0.0,True,sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,0,,True,True
+raw_guard,radar_dropout,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+combined,radar_dropout,,,0.2,0.0,True,sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,0,,True,True
+original_exclusions,all_sources_recovered,,,0.2,0.2,False,clear_output,sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,0,,False,True
+revised_radar,all_sources_recovered,,,0.2,0.2,False,clear_output,sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,0,,False,True
+raw_guard,all_sources_recovered,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+combined,all_sources_recovered,,,0.2,0.2,False,clear_output,sensor_unavailable:radar:stale_grid; radar_hit=channel_unknown(no_fresh_provenance),,0,0,0,0,,False,True
+original_exclusions,replayed_cloud,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+revised_radar,replayed_cloud,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+raw_guard,replayed_cloud,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,True,True
+combined,replayed_cloud,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,True,True
+original_exclusions,fresh_empty_scan_resume,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+revised_radar,fresh_empty_scan_resume,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+raw_guard,fresh_empty_scan_resume,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+combined,fresh_empty_scan_resume,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+original_exclusions,malformed_cloud,,,0.2,0.2,False,clear_output,,,0,0,0,1,,False,True
+revised_radar,malformed_cloud,,,0.2,0.2,False,clear_output,,,0,0,0,1,,False,True
+raw_guard,malformed_cloud,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,1,,True,True
+combined,malformed_cloud,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,1,,True,True
+original_exclusions,valid_cloud_resume,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+revised_radar,valid_cloud_resume,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+raw_guard,valid_cloud_resume,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+combined,valid_cloud_resume,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+original_exclusions,missing_cloud_transform,,,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,missing_cloud_transform,,,0.2,0.2,False,clear_output,,,0,0,0,1,True,False,True
+raw_guard,missing_cloud_transform,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,1,True,True,True
+combined,missing_cloud_transform,,,0.2,0.0,True,sensor_unavailable:lidar_front_guard:stale_grid,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,1,True,True,True
+original_exclusions,transform_recovered,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+revised_radar,transform_recovered,,,0.2,0.2,False,clear_output,,,0,0,0,0,,False,True
+raw_guard,transform_recovered,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+combined,transform_recovered,,,0.2,0.2,False,clear_output,sensor_unavailable:lidar_front_guard:stale_grid,,0,0,0,0,,False,True
+original_exclusions,reverse_away_front_only_obstacle,0.3,0.382,-0.2,-0.2,False,clear_output,,,0,0,0,1,True,False,True
+revised_radar,reverse_away_front_only_obstacle,0.3,0.382,-0.2,-0.2,False,clear_output,,,0,0,0,1,True,False,True
+raw_guard,reverse_away_front_only_obstacle,0.3,0.382,-0.2,-0.2,False,clear_output,,,1,0,1,1,True,False,True
+combined,reverse_away_front_only_obstacle,0.3,0.382,-0.2,-0.2,False,clear_output,,,1,0,1,1,True,False,True

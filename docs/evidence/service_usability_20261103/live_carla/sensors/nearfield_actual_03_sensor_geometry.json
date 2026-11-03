@@ -1,0 +1,880 @@
+{
+  "captured_utc": "2026-11-03T08:17:14.443863+00:00",
+  "evidence_type": "ACTUAL_READ_ONLY_CARLA_STATIONARY_SENSOR_TRANSFORMS",
+  "ego_id": 2,
+  "ego_type": "vehicle.ranger.default",
+  "ego_role": "ego_vehicle",
+  "ego_speed_mps": 7.875926826272917e-07,
+  "map": "map_package/Maps/Woraksan_v27_charge_anchor_20261103/Woraksan_v27_charge_anchor_20261103",
+  "carla_frame": 37361,
+  "carla_elapsed_seconds": 1775.6795370017353,
+  "ego_world_xyz_m": {
+    "x": -15.428439140319824,
+    "y": -30.813119888305664,
+    "z": -0.9378158450126648
+  },
+  "ego_world_rpy_deg": {
+    "roll": 0.26457852125167847,
+    "pitch": -0.0024452076759189367,
+    "yaw": -92.60100555419922
+  },
+  "sensors": [
+    {
+      "actor_id": 17,
+      "type": "sensor.other.imu",
+      "role": "imu",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.456174850463867,
+        "y": -31.50060272216797,
+        "z": -0.181853249669075
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          0.6880005905320559
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          5.382126566644274e-08
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          0.7559999654333502
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "noise_gyro_stddev_y": "0.0",
+        "noise_gyro_stddev_x": "0.0",
+        "noise_gyro_stddev_z": "0.0",
+        "noise_accel_stddev_y": "0.0",
+        "noise_accel_stddev_x": "0.0",
+        "noise_accel_stddev_z": "0.0",
+        "noise_seed": "0",
+        "noise_gyro_bias_x": "0.0",
+        "sensor_tick": "0.1",
+        "noise_gyro_bias_z": "0.0",
+        "noise_gyro_bias_y": "0.0",
+        "ros_name": "sensor.other.imu",
+        "role_name": "imu"
+      }
+    },
+    {
+      "actor_id": 16,
+      "type": "sensor.other.gnss",
+      "role": "gnss_right",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -14.97890853881836,
+        "y": -30.833539962768555,
+        "z": -0.9398938417434692
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          -1.2103303816957123e-06
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          0.4499988164461115
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          -6.267685459526717e-08
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "noise_alt_bias": "0.0",
+        "noise_alt_stddev": "0.0",
+        "noise_lon_bias": "0.0",
+        "noise_lon_stddev": "0.0",
+        "noise_lat_bias": "0.0",
+        "noise_lat_stddev": "0.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "ros_name": "sensor.other.gnss",
+        "role_name": "gnss_right"
+      }
+    },
+    {
+      "actor_id": 15,
+      "type": "sensor.other.gnss",
+      "role": "gnss",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.877970695495605,
+        "y": -30.792699813842773,
+        "z": -0.9357377886772156
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          4.66856096892343e-07
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          -0.4500000400339488
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          2.0410422019168095e-08
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "noise_alt_bias": "0.0",
+        "noise_alt_stddev": "0.0",
+        "noise_lon_bias": "0.0",
+        "noise_lon_stddev": "0.0",
+        "noise_lat_bias": "0.0",
+        "noise_lat_stddev": "0.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "ros_name": "sensor.other.gnss",
+        "role_name": "gnss"
+      }
+    },
+    {
+      "actor_id": 14,
+      "type": "sensor.other.lane_invasion",
+      "role": "lane_invasion",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.428439140319824,
+        "y": -30.813119888305664,
+        "z": -0.9378158450126648
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          -3.933750001294811e-07
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          -1.3531546905198866e-07
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          -4.873649772640931e-08
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "ros_name": "sensor.other.lane_invasion",
+        "role_name": "lane_invasion"
+      }
+    },
+    {
+      "actor_id": 13,
+      "type": "sensor.other.collision",
+      "role": "collision",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.428439140319824,
+        "y": -30.813119888305664,
+        "z": -0.9378158450126648
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          -3.933750001294811e-07
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          -1.3531546905198866e-07
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          -4.873649772640931e-08
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "ros_name": "sensor.other.collision",
+        "role_name": "collision"
+      }
+    },
+    {
+      "actor_id": 12,
+      "type": "sensor.other.radar",
+      "role": "radar_rear",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.398858070373535,
+        "y": -30.196510314941406,
+        "z": -0.598013162612915
+      },
+      "actual_world_rpy_deg": {
+        "roll": -0.26457852125167847,
+        "pitch": 0.0024452076759189367,
+        "yaw": 87.39895629882812
+      },
+      "actual_ego_relative_matrix": [
+        [
+          -1.000000012410887,
+          -6.281300098942566e-07,
+          2.9125780381250577e-09,
+          -0.6173316382152798
+        ],
+        [
+          6.276810876615357e-07,
+          -0.9999999559666006,
+          -2.0415676094120982e-10,
+          -6.369536826866806e-07
+        ],
+        [
+          2.887720347566347e-09,
+          -1.325928776496621e-11,
+          0.9999999870888218,
+          0.3397799063451741
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "0.5",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_rear"
+      }
+    },
+    {
+      "actor_id": 11,
+      "type": "sensor.other.radar",
+      "role": "radar_right2",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -14.88040828704834,
+        "y": -30.4576358795166,
+        "z": -0.6501201391220093
+      },
+      "actual_world_rpy_deg": {
+        "roll": -0.00244139670394361,
+        "pitch": -0.26457419991493225,
+        "yaw": -2.6010072231292725
+      },
+      "actual_ego_relative_matrix": [
+        [
+          2.0117631660543367e-07,
+          -1.0000000526789188,
+          -6.603140495498039e-08,
+          -0.38000039633670823
+        ],
+        [
+          0.9999999958887942,
+          2.010444433694002e-07,
+          -7.558721636623245e-08,
+          0.5299999636152446
+        ],
+        [
+          7.561732314181197e-08,
+          -6.60563862404668e-08,
+          0.9999999867377756,
+          0.290129939789036
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "0.8",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_right2"
+      }
+    },
+    {
+      "actor_id": 10,
+      "type": "sensor.other.radar",
+      "role": "radar_right1",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -14.914897918701172,
+        "y": -31.21685218811035,
+        "z": -0.6501525640487671
+      },
+      "actual_world_rpy_deg": {
+        "roll": -0.00244139670394361,
+        "pitch": -0.26457419991493225,
+        "yaw": -2.6010072231292725
+      },
+      "actual_ego_relative_matrix": [
+        [
+          2.0117631660543367e-07,
+          -1.0000000526789188,
+          -6.603140495498039e-08,
+          0.3799989221718505
+        ],
+        [
+          0.9999999958887942,
+          2.010444433694002e-07,
+          -7.558721636623245e-08,
+          0.5299995125752623
+        ],
+        [
+          7.561732314181197e-08,
+          -6.60563862404668e-08,
+          0.9999999867377756,
+          0.29012994722177843
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "0.8",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_right1"
+      }
+    },
+    {
+      "actor_id": 9,
+      "type": "sensor.other.radar",
+      "role": "radar_left2",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.939305305480957,
+        "y": -30.40953254699707,
+        "z": -0.6452253460884094
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.0024414120707660913,
+        "pitch": 0.26457419991493225,
+        "yaw": 177.39898681640625
+      },
+      "actual_ego_relative_matrix": [
+        [
+          -3.016555335522142e-07,
+          1.0000000572434342,
+          -6.530455876757602e-08,
+          -0.3800010587274478
+        ],
+        [
+          -1.0000000004532297,
+          -3.0152134402808583e-07,
+          -7.555419817041609e-08,
+          -0.5300003999498912
+        ],
+        [
+          -7.564268898058168e-08,
+          6.532338555210841e-08,
+          0.9999999867379591,
+          0.2901299157243187
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "0.8",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_left2"
+      }
+    },
+    {
+      "actor_id": 8,
+      "type": "sensor.other.radar",
+      "role": "radar_left1",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.973794937133789,
+        "y": -31.16874885559082,
+        "z": -0.6452577114105225
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.0024414120707660913,
+        "pitch": 0.26457419991493225,
+        "yaw": 177.39898681640625
+      },
+      "actual_ego_relative_matrix": [
+        [
+          -3.016555335522142e-07,
+          1.0000000572434342,
+          -6.530455876757602e-08,
+          0.37999825977856716
+        ],
+        [
+          -1.0000000004532297,
+          -3.0152134402808583e-07,
+          -7.555419817041609e-08,
+          -0.5300008512651111
+        ],
+        [
+          -7.564268898058168e-08,
+          6.532338555210841e-08,
+          0.9999999867379591,
+          0.29012998276106994
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "0.8",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_left1"
+      }
+    },
+    {
+      "actor_id": 7,
+      "type": "sensor.other.radar",
+      "role": "radar_front2",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.565329551696777,
+        "y": -31.4354305267334,
+        "z": -0.6035580039024353
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          0.6278670327041311
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          -0.1100512089555199
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          0.33377995631268953
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "1.5",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_front2"
+      }
+    },
+    {
+      "actor_id": 6,
+      "type": "sensor.other.radar",
+      "role": "radar_front1",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.345458984375,
+        "y": -31.44542121887207,
+        "z": -0.6045743227005005
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          0.6278696298018929
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          0.11004856972777688
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          0.3337800034601528
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "points_per_second": "500",
+        "range": "1.5",
+        "vertical_fov": "10.0",
+        "sensor_tick": "0.1",
+        "noise_seed": "0",
+        "horizontal_fov": "15.0",
+        "ros_name": "sensor.other.radar",
+        "role_name": "radar_front1"
+      }
+    },
+    {
+      "actor_id": 5,
+      "type": "sensor.lidar.ray_cast",
+      "role": "lidar_front",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.460335731506348,
+        "y": -31.575843811035156,
+        "z": -0.34247469902038574
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          0.7633598434014033
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          -3.5629010497473246e-07
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          0.5953800186725102
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "dropoff_zero_intensity": "0.0",
+        "atmosphere_attenuation_rate": "0.004",
+        "horizontal_fov": "120.0",
+        "lower_fov": "-25.0",
+        "upper_fov": "10.0",
+        "rotation_frequency": "20.0",
+        "points_per_second": "60000",
+        "dropoff_intensity_limit": "1.0",
+        "noise_seed": "0",
+        "range": "50.0",
+        "channels": "16",
+        "dropoff_general_rate": "0.0",
+        "sensor_tick": "0.1",
+        "noise_stddev": "0.0",
+        "ros_name": "sensor.lidar.ray_cast",
+        "role_name": "lidar_front"
+      }
+    },
+    {
+      "actor_id": 4,
+      "type": "sensor.camera.rgb",
+      "role": "rgb_rear",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.39894962310791,
+        "y": -30.194503784179688,
+        "z": -0.6376626491546631
+      },
+      "actual_world_rpy_deg": {
+        "roll": -0.26457852125167847,
+        "pitch": 0.0024452076759189367,
+        "yaw": 87.39895629882812
+      },
+      "actual_ego_relative_matrix": [
+        [
+          -1.000000012410887,
+          -6.281300098942566e-07,
+          2.9125780381250577e-09,
+          -0.619330255004531
+        ],
+        [
+          6.276810876615357e-07,
+          -0.9999999559666006,
+          -2.0415676094120982e-10,
+          -5.905888933455117e-08
+        ],
+        [
+          2.887720347566347e-09,
+          -1.325928776496621e-11,
+          0.9999999870888218,
+          0.30012991465411254
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "chromatic_aberration_intensity": "0.0",
+        "tint": "0.0",
+        "shoulder": "0.26",
+        "toe": "0.55",
+        "white_clip": "0.04",
+        "slope": "0.88",
+        "blur_radius": "0.0",
+        "blur_amount": "1.0",
+        "blade_count": "5",
+        "exposure_speed_down": "1.0",
+        "min_fstop": "1.2",
+        "exposure_speed_up": "3.0",
+        "exposure_max_bright": "12.0",
+        "motion_blur_min_object_screen_size": "0.1",
+        "bloom_intensity": "0.675",
+        "lens_flare_intensity": "0.1",
+        "black_clip": "0.0",
+        "motion_blur_max_distortion": "0.35",
+        "focal_distance": "1000.0",
+        "motion_blur_intensity": "0.45",
+        "temp": "6500.0",
+        "gamma": "2.2",
+        "enable_postprocess_effects": "true",
+        "iso": "100.0",
+        "shutter_speed": "200.0",
+        "exposure_compensation": "0.0",
+        "exposure_mode": "histogram",
+        "calibration_constant": "16.0",
+        "lens_y_size": "0.08",
+        "lens_x_size": "0.08",
+        "lens_kcube": "0.0",
+        "lens_k": "-1.0",
+        "lens_circle_multiplier": "0.0",
+        "fstop": "1.4",
+        "fov": "90.0",
+        "image_size_y": "720",
+        "chromatic_aberration_offset": "0.0",
+        "lens_circle_falloff": "5.0",
+        "image_size_x": "960",
+        "sensor_tick": "0.1",
+        "ros_name": "sensor.camera.rgb",
+        "exposure_min_bright": "10.0",
+        "role_name": "rgb_rear"
+      }
+    },
+    {
+      "actor_id": 3,
+      "type": "sensor.camera.rgb",
+      "role": "rgb_view",
+      "parent_id": 2,
+      "actual_world_xyz_m": {
+        "x": -15.460795402526855,
+        "y": -31.57582664489746,
+        "z": -0.44217362999916077
+      },
+      "actual_world_rpy_deg": {
+        "roll": 0.26457852125167847,
+        "pitch": -0.0024452076759189367,
+        "yaw": -92.60100555419922
+      },
+      "actual_ego_relative_matrix": [
+        [
+          1.0000000435527692,
+          2.21102136599427e-10,
+          1.3135173504430497e-11,
+          0.76336780991317
+        ],
+        [
+          2.21102136599427e-10,
+          0.9999999871082734,
+          1.3026777746782958e-10,
+          5.6909293277840334e-08
+        ],
+        [
+          1.3135173504430497e-11,
+          1.3026777746782958e-10,
+          0.9999999870902424,
+          0.4956800275066444
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "attributes": {
+        "chromatic_aberration_intensity": "0.0",
+        "tint": "0.0",
+        "shoulder": "0.26",
+        "toe": "0.55",
+        "white_clip": "0.04",
+        "slope": "0.88",
+        "blur_radius": "0.0",
+        "blur_amount": "1.0",
+        "blade_count": "5",
+        "exposure_speed_down": "1.0",
+        "min_fstop": "1.2",
+        "exposure_speed_up": "3.0",
+        "exposure_max_bright": "12.0",
+        "motion_blur_min_object_screen_size": "0.1",
+        "bloom_intensity": "0.675",
+        "lens_flare_intensity": "0.1",
+        "black_clip": "0.0",
+        "motion_blur_max_distortion": "0.35",
+        "focal_distance": "1000.0",
+        "motion_blur_intensity": "0.45",
+        "temp": "6500.0",
+        "gamma": "2.2",
+        "enable_postprocess_effects": "true",
+        "iso": "100.0",
+        "shutter_speed": "200.0",
+        "exposure_compensation": "0.0",
+        "exposure_mode": "histogram",
+        "calibration_constant": "16.0",
+        "lens_y_size": "0.08",
+        "lens_x_size": "0.08",
+        "lens_kcube": "0.0",
+        "lens_k": "-1.0",
+        "lens_circle_multiplier": "0.0",
+        "fstop": "1.4",
+        "fov": "90.0",
+        "image_size_y": "600",
+        "chromatic_aberration_offset": "0.0",
+        "lens_circle_falloff": "5.0",
+        "image_size_x": "800",
+        "sensor_tick": "0.1",
+        "ros_name": "sensor.camera.rgb",
+        "exposure_min_bright": "10.0",
+        "role_name": "rgb_view"
+      }
+    }
+  ],
+  "per_cloud_stamp_aligned": false,
+  "limitation": "Snapshot context only; not paired with each raw-cloud source stamp or a closest-mesh-skin measurement. No sensor/control publisher or actor mutation."
+}

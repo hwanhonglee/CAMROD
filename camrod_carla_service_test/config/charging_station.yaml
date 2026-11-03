@@ -1,0 +1,11 @@
+# HH_261103 - This simulator-only charger anchor is 0.60 m behind the unchanged cargo/normal station.
+# Only the existing contact emulator consumes this file; native parking/cargo keep dz_area_7144.
+# Its existing radius, stopped/fresh selected-AprilTag terminal evidence and dwell are unchanged.
+drop_zones:
+  - id: "dz_area_7144_charging_test"
+    type: "drop_zone"
+    source: "test_only_charging_anchor"
+    x: -8.454946473479461
+    y: 39.79129190106755
+    z: 0.0
+    yaw_deg: -88.2127

@@ -1,0 +1,1137 @@
+{
+  "evidence_type": "ACTUAL_CARLA_SAVED_COUNTS_NOT_SCENE_RENDER",
+  "interpretation": "STATIONARY SENSOR COMPARISON — NOT A BRAKING TEST; NO_HIT is not FREE space or safety certification.",
+  "reducer_sha256": "c18aab41e8e66bceda925eb95d04fc1ccf5d95029eb232b099238c9639c09889",
+  "runs": [
+    {
+      "source": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261102/live_carla/nearfield_actual_02.jsonl",
+      "source_sha256": "56a4d526d8d391a766720276188844edffceeb627cbdc981ec27d3e3d523b868",
+      "evidence_type": "ACTUAL_CARLA_SAVED_SAMPLE_COUNTS_NOT_SCENE_RENDER",
+      "baseline_samples": 292,
+      "baseline_first_utc": "2026-11-02T11:42:34.227745+00:00",
+      "baseline_last_utc": "2026-11-02T11:43:34.104350+00:00",
+      "carla_frames": [
+        17712,
+        18851
+      ],
+      "completed": true,
+      "measured_placements": [
+        {
+          "utc": "2026-11-02T11:43:40.278640+00:00",
+          "event": "measured_placement",
+          "case": "front_10cm",
+          "actor_id": 19,
+          "requested_front_body_gap_m": 0.1,
+          "measured_front_body_gap_m": 0.09999999252445946,
+          "ego_bounds_m": {
+            "forward": [
+              -0.7896163513895971,
+              0.7634710104729265
+            ],
+            "right": [
+              -0.5625319268030466,
+              0.5635222419249715
+            ],
+            "z": [
+              -0.9404134750366211,
+              0.388666570186615
+            ]
+          },
+          "obstacle_bounds_m": {
+            "forward": [
+              0.863471002997386,
+              1.238829923723472
+            ],
+            "right": [
+              -0.18767738311788662,
+              0.18767990544611735
+            ],
+            "z": [
+              -0.9165970683097839,
+              0.9434029459953308
+            ]
+          }
+        },
+        {
+          "utc": "2026-11-02T11:43:49.304748+00:00",
+          "event": "measured_placement",
+          "case": "front_20cm",
+          "actor_id": 20,
+          "requested_front_body_gap_m": 0.2,
+          "measured_front_body_gap_m": 0.20000359826738645,
+          "ego_bounds_m": {
+            "forward": [
+              -0.7896163513895971,
+              0.7634710104729265
+            ],
+            "right": [
+              -0.5625319268030466,
+              0.5635222419249715
+            ],
+            "z": [
+              -0.9404134750366211,
+              0.388666570186615
+            ]
+          },
+          "obstacle_bounds_m": {
+            "forward": [
+              0.963474608740313,
+              1.33883378924088
+            ],
+            "right": [
+              -0.1876794456253208,
+              0.18767921532628407
+            ],
+            "z": [
+              -0.9165970683097839,
+              0.9434029459953308
+            ]
+          }
+        },
+        {
+          "utc": "2026-11-02T11:43:58.329958+00:00",
+          "event": "measured_placement",
+          "case": "front_30cm",
+          "actor_id": 21,
+          "requested_front_body_gap_m": 0.3,
+          "measured_front_body_gap_m": 0.30000152820062453,
+          "ego_bounds_m": {
+            "forward": [
+              -0.7896163513895971,
+              0.7634710104729265
+            ],
+            "right": [
+              -0.5625319268030466,
+              0.5635222419249715
+            ],
+            "z": [
+              -0.9404134750366211,
+              0.388666570186615
+            ]
+          },
+          "obstacle_bounds_m": {
+            "forward": [
+              1.063472538673551,
+              1.4388314771926218
+            ],
+            "right": [
+              -0.18767896975307963,
+              0.18767807682942816
+            ],
+            "z": [
+              -0.9165970683097839,
+              0.9434029459953308
+            ]
+          }
+        },
+        {
+          "utc": "2026-11-02T11:44:07.359991+00:00",
+          "event": "measured_placement",
+          "case": "front_40cm",
+          "actor_id": 22,
+          "requested_front_body_gap_m": 0.4,
+          "measured_front_body_gap_m": 0.4000011080889294,
+          "ego_bounds_m": {
+            "forward": [
+              -0.7896163513895971,
+              0.7634710104729265
+            ],
+            "right": [
+              -0.5625319268030466,
+              0.5635222419249715
+            ],
+            "z": [
+              -0.9404134750366211,
+              0.388666570186615
+            ]
+          },
+          "obstacle_bounds_m": {
+            "forward": [
+              1.163472118561856,
+              1.5388331909989859
+            ],
+            "right": [
+              -0.187679382305447,
+              0.18767903666466168
+            ],
+            "z": [
+              -0.9165970683097839,
+              0.9434029459953308
+            ]
+          }
+        },
+        {
+          "utc": "2026-11-02T11:44:16.381402+00:00",
+          "event": "measured_placement",
+          "case": "roadside_left",
+          "actor_id": 23,
+          "requested_front_body_gap_m": 0.2,
+          "measured_front_body_gap_m": 0.20000297390930655,
+          "ego_bounds_m": {
+            "forward": [
+              -0.7896163513895971,
+              0.7634710104729265
+            ],
+            "right": [
+              -0.5625319268030466,
+              0.5635222419249715
+            ],
+            "z": [
+              -0.9404134750366211,
+              0.388666570186615
+            ]
+          },
+          "obstacle_bounds_m": {
+            "forward": [
+              0.9634739843822331,
+              1.3388329229013038
+            ],
+            "right": [
+              -1.1378894919680818,
+              -0.762532445385574
+            ],
+            "z": [
+              -0.9165970683097839,
+              0.9434029459953308
+            ]
+          }
+        },
+        {
+          "utc": "2026-11-02T11:44:25.408752+00:00",
+          "event": "measured_placement",
+          "case": "roadside_right",
+          "actor_id": 24,
+          "requested_front_body_gap_m": 0.2,
+          "measured_front_body_gap_m": 0.2000047119495889,
+          "ego_bounds_m": {
+            "forward": [
+              -0.7896163513895971,
+              0.7634710104729265
+            ],
+            "right": [
+              -0.5625319268030466,
+              0.5635222419249715
+            ],
+            "z": [
+              -0.9404134750366211,
+              0.388666570186615
+            ]
+          },
+          "obstacle_bounds_m": {
+            "forward": [
+              0.9634757224225154,
+              1.3388346609415862
+            ],
+            "right": [
+              0.7635222912137181,
+              1.1388793377962259
+            ],
+            "z": [
+              -0.9165972471237183,
+              0.9434027671813965
+            ]
+          }
+        }
+      ],
+      "actor_receipts": [
+        {
+          "utc": "2026-11-02T11:43:35.254887+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 18,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365972876548767
+        },
+        {
+          "utc": "2026-11-02T11:43:36.256778+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 18
+        },
+        {
+          "utc": "2026-11-02T11:43:39.274070+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 19,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365971088409424
+        },
+        {
+          "utc": "2026-11-02T11:43:45.288987+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 19
+        },
+        {
+          "utc": "2026-11-02T11:43:48.297954+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 20,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365971088409424
+        },
+        {
+          "utc": "2026-11-02T11:43:54.306688+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 20
+        },
+        {
+          "utc": "2026-11-02T11:43:57.315862+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 21,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365971088409424
+        },
+        {
+          "utc": "2026-11-02T11:44:03.336749+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 21
+        },
+        {
+          "utc": "2026-11-02T11:44:06.351706+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 22,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365971088409424
+        },
+        {
+          "utc": "2026-11-02T11:44:12.363702+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 22
+        },
+        {
+          "utc": "2026-11-02T11:44:15.374811+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 23,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365971088409424
+        },
+        {
+          "utc": "2026-11-02T11:44:21.385019+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 23
+        },
+        {
+          "utc": "2026-11-02T11:44:24.392763+00:00",
+          "event": "owned_actor_spawned",
+          "actor_id": 24,
+          "role": "camrod_sensor_probe_12bbd6757463",
+          "ground_label": "Roads",
+          "ground_z": -0.9365972876548767
+        },
+        {
+          "utc": "2026-11-02T11:44:30.411788+00:00",
+          "event": "owned_actor_removed",
+          "actor_id": 24
+        }
+      ],
+      "exact_ground_rejection_retained": false,
+      "interpretation": "Retrospective fresh high-cost-cell HIT/NO_HIT; NO_HIT is not proof of free space, final-gate isolation or successful stopping.",
+      "modes": {
+        "radar_only": {
+          "HIT": 0,
+          "NO_HIT": 269,
+          "UNAVAILABLE": 23
+        },
+        "guard_only": {
+          "HIT": 0,
+          "NO_HIT": 284,
+          "UNAVAILABLE": 8
+        },
+        "both": {
+          "HIT": 0,
+          "NO_HIT": 263,
+          "UNAVAILABLE": 29
+        }
+      },
+      "topics": {
+        "radar_grid": {
+          "samples_with_metrics": 291,
+          "error_samples": 0,
+          "point_count_range": null,
+          "occupied_grid_cell_range": [
+            0,
+            0
+          ],
+          "unknown_grid_cell_range": [
+            14319,
+            14319
+          ],
+          "source_age_range_s": [
+            0.007477998733520508,
+            0.20528388023376465
+          ]
+        },
+        "guard_grid": {
+          "samples_with_metrics": 291,
+          "error_samples": 0,
+          "point_count_range": null,
+          "occupied_grid_cell_range": [
+            0,
+            0
+          ],
+          "unknown_grid_cell_range": [
+            6400,
+            6400
+          ],
+          "source_age_range_s": [
+            0.008921384811401367,
+            0.21375036239624023
+          ]
+        },
+        "raw_lidar": {
+          "samples_with_metrics": 291,
+          "error_samples": 0,
+          "point_count_range": [
+            2716,
+            2716
+          ],
+          "occupied_grid_cell_range": null,
+          "unknown_grid_cell_range": null,
+          "source_age_range_s": [
+            0.0,
+            0.10000000200000159
+          ]
+        },
+        "filtered_lidar": {
+          "samples_with_metrics": 291,
+          "error_samples": 0,
+          "point_count_range": [
+            0,
+            0
+          ],
+          "occupied_grid_cell_range": null,
+          "unknown_grid_cell_range": null,
+          "source_age_range_s": [
+            0.0019922256469726562,
+            0.13296055793762207
+          ]
+        },
+        "raw_radar_front1": {
+          "samples_with_metrics": 291,
+          "error_samples": 0,
+          "point_count_range": [
+            0,
+            0
+          ],
+          "occupied_grid_cell_range": null,
+          "unknown_grid_cell_range": null,
+          "source_age_range_s": [
+            0.0,
+            0.10000000200000159
+          ]
+        },
+        "raw_radar_front2": {
+          "samples_with_metrics": 291,
+          "error_samples": 0,
+          "point_count_range": [
+            0,
+            0
+          ],
+          "occupied_grid_cell_range": null,
+          "unknown_grid_cell_range": null,
+          "source_age_range_s": [
+            0.0,
+            0.10000000200000159
+          ]
+        }
+      },
+      "case_results": [
+        {
+          "case": "front_10cm",
+          "actor_id": 19,
+          "placement_utc": "2026-11-02T11:43:40.278640+00:00",
+          "measured_body_gap_m": 0.09999999252445946,
+          "samples": 25,
+          "raw_front1_min_range_m": [
+            0.4004220962524414,
+            0.4082961976528168
+          ],
+          "raw_front2_min_range_m": [
+            0.3893863260746002,
+            0.40301573276519775
+          ],
+          "filtered_point_count_range": [
+            1246,
+            1304
+          ],
+          "filtered_x_min_range_m": [
+            0.19236083328723907,
+            0.20824706554412842
+          ],
+          "occupied_cell_ranges": {
+            "radar_grid": [
+              0,
+              0
+            ],
+            "guard_grid": [
+              10,
+              13
+            ]
+          },
+          "modes": {
+            "radar_only": {
+              "HIT": 0,
+              "NO_HIT": 23,
+              "UNAVAILABLE": 2
+            },
+            "guard_only": {
+              "HIT": 24,
+              "NO_HIT": 0,
+              "UNAVAILABLE": 1
+            },
+            "both": {
+              "HIT": 22,
+              "NO_HIT": 0,
+              "UNAVAILABLE": 3
+            }
+          }
+        },
+        {
+          "case": "front_20cm",
+          "actor_id": 20,
+          "placement_utc": "2026-11-02T11:43:49.304748+00:00",
+          "measured_body_gap_m": 0.20000359826738645,
+          "samples": 25,
+          "raw_front1_min_range_m": [
+            0.4986189901828766,
+            0.5109847784042358
+          ],
+          "raw_front2_min_range_m": [
+            0.488720566034317,
+            0.5010645985603333
+          ],
+          "filtered_point_count_range": [
+            938,
+            971
+          ],
+          "filtered_x_min_range_m": [
+            0.2923681437969208,
+            0.30821287631988525
+          ],
+          "occupied_cell_ranges": {
+            "radar_grid": [
+              0,
+              0
+            ],
+            "guard_grid": [
+              0,
+              0
+            ]
+          },
+          "modes": {
+            "radar_only": {
+              "HIT": 0,
+              "NO_HIT": 23,
+              "UNAVAILABLE": 2
+            },
+            "guard_only": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            },
+            "both": {
+              "HIT": 0,
+              "NO_HIT": 22,
+              "UNAVAILABLE": 3
+            }
+          }
+        },
+        {
+          "case": "front_30cm",
+          "actor_id": 21,
+          "placement_utc": "2026-11-02T11:43:58.329958+00:00",
+          "measured_body_gap_m": 0.30000152820062453,
+          "samples": 25,
+          "raw_front1_min_range_m": [
+            0.5980655550956726,
+            0.6080460548400879
+          ],
+          "raw_front2_min_range_m": [
+            0.5872596502304077,
+            0.6009851098060608
+          ],
+          "filtered_point_count_range": [
+            750,
+            771
+          ],
+          "filtered_x_min_range_m": [
+            0.3922168016433716,
+            0.4080249071121216
+          ],
+          "occupied_cell_ranges": {
+            "radar_grid": [
+              0,
+              0
+            ],
+            "guard_grid": [
+              0,
+              0
+            ]
+          },
+          "modes": {
+            "radar_only": {
+              "HIT": 0,
+              "NO_HIT": 25,
+              "UNAVAILABLE": 0
+            },
+            "guard_only": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            },
+            "both": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            }
+          }
+        },
+        {
+          "case": "front_40cm",
+          "actor_id": 22,
+          "placement_utc": "2026-11-02T11:44:07.359991+00:00",
+          "measured_body_gap_m": 0.4000011080889294,
+          "samples": 25,
+          "raw_front1_min_range_m": [
+            0.697372317314148,
+            0.7116153836250305
+          ],
+          "raw_front2_min_range_m": [
+            0.6855588555335999,
+            0.7015319466590881
+          ],
+          "filtered_point_count_range": [
+            622,
+            641
+          ],
+          "filtered_x_min_range_m": [
+            0.49284178018569946,
+            0.5088183283805847
+          ],
+          "occupied_cell_ranges": {
+            "radar_grid": [
+              0,
+              0
+            ],
+            "guard_grid": [
+              0,
+              0
+            ]
+          },
+          "modes": {
+            "radar_only": {
+              "HIT": 0,
+              "NO_HIT": 23,
+              "UNAVAILABLE": 2
+            },
+            "guard_only": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            },
+            "both": {
+              "HIT": 0,
+              "NO_HIT": 22,
+              "UNAVAILABLE": 3
+            }
+          }
+        },
+        {
+          "case": "roadside_left",
+          "actor_id": 23,
+          "placement_utc": "2026-11-02T11:44:16.381402+00:00",
+          "measured_body_gap_m": 0.20000297390930655,
+          "samples": 25,
+          "raw_front1_min_range_m": null,
+          "raw_front2_min_range_m": null,
+          "filtered_point_count_range": [
+            0,
+            0
+          ],
+          "filtered_x_min_range_m": null,
+          "occupied_cell_ranges": {
+            "radar_grid": [
+              0,
+              0
+            ],
+            "guard_grid": [
+              0,
+              0
+            ]
+          },
+          "modes": {
+            "radar_only": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            },
+            "guard_only": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            },
+            "both": {
+              "HIT": 0,
+              "NO_HIT": 23,
+              "UNAVAILABLE": 2
+            }
+          }
+        },
+        {
+          "case": "roadside_right",
+          "actor_id": 24,
+          "placement_utc": "2026-11-02T11:44:25.408752+00:00",
+          "measured_body_gap_m": 0.2000047119495889,
+          "samples": 25,
+          "raw_front1_min_range_m": null,
+          "raw_front2_min_range_m": null,
+          "filtered_point_count_range": [
+            0,
+            0
+          ],
+          "filtered_x_min_range_m": null,
+          "occupied_cell_ranges": {
+            "radar_grid": [
+              0,
+              0
+            ],
+            "guard_grid": [
+              0,
+              0
+            ]
+          },
+          "modes": {
+            "radar_only": {
+              "HIT": 0,
+              "NO_HIT": 23,
+              "UNAVAILABLE": 2
+            },
+            "guard_only": {
+              "HIT": 0,
+              "NO_HIT": 24,
+              "UNAVAILABLE": 1
+            },
+            "both": {
+              "HIT": 0,
+              "NO_HIT": 22,
+              "UNAVAILABLE": 3
+            }
+          }
+        }
+      ],
+      "gate_operating_states": [
+        "FAULT_HOLD"
+      ],
+      "physical_minus_native_front_m": 0.05510101047292648,
+      "post_removal_transition_hits": [
+        {
+          "case": "no_owned_actor_before_front_20cm",
+          "utc": "2026-11-02T11:43:45.289762+00:00",
+          "hits": {
+            "radar_grid": false,
+            "guard_grid": true
+          },
+          "seconds_after_removal": 0.000775
+        }
+      ],
+      "camera_receipts": [
+        {
+          "case": "baseline_end",
+          "receipt": {
+            "utc": "2026-11-02T11:43:34.237503+00:00",
+            "event": "publishers_after_baseline",
+            "publishers": {
+              "raw_lidar": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "filtered_lidar": [
+                {
+                  "name": "carla_lidar_filter",
+                  "namespace": "/sensing/lidar"
+                }
+              ],
+              "radar_grid": [
+                {
+                  "name": "radar_cost_grid",
+                  "namespace": "/sensing/radar"
+                }
+              ],
+              "guard_grid": [
+                {
+                  "name": "lidar_front_guard",
+                  "namespace": "/sensing/lidar"
+                }
+              ],
+              "gate": [
+                {
+                  "name": "cmd_vel_safety_gate",
+                  "namespace": "/control"
+                }
+              ],
+              "raw_radar_front1": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "raw_radar_front2": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "raw_radar_left1": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "raw_radar_left2": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "raw_radar_right1": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "raw_radar_right2": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "raw_radar_rear": [
+                {
+                  "name": "carla_ros_bridge",
+                  "namespace": "/"
+                }
+              ],
+              "range_front1": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ],
+              "range_front2": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ],
+              "range_left1": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ],
+              "range_left2": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ],
+              "range_right1": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ],
+              "range_right2": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ],
+              "range_rear": [
+                {
+                  "name": "carla_radar_relay",
+                  "namespace": "/"
+                }
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": null,
+          "reason": "fresh JPEG/placement receipt unavailable",
+          "receipt_age_s": 46.44743871688843
+        },
+        {
+          "case": "front_10cm",
+          "receipt": {
+            "utc": "2026-11-02T11:43:40.278640+00:00",
+            "event": "measured_placement",
+            "case": "front_10cm",
+            "actor_id": 19,
+            "requested_front_body_gap_m": 0.1,
+            "measured_front_body_gap_m": 0.09999999252445946,
+            "ego_bounds_m": {
+              "forward": [
+                -0.7896163513895971,
+                0.7634710104729265
+              ],
+              "right": [
+                -0.5625319268030466,
+                0.5635222419249715
+              ],
+              "z": [
+                -0.9404134750366211,
+                0.388666570186615
+              ]
+            },
+            "obstacle_bounds_m": {
+              "forward": [
+                0.863471002997386,
+                1.238829923723472
+              ],
+              "right": [
+                -0.18767738311788662,
+                0.18767990544611735
+              ],
+              "z": [
+                -0.9165970683097839,
+                0.9434029459953308
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": null,
+          "reason": "fresh JPEG/placement receipt unavailable",
+          "receipt_age_s": 41.13331389427185
+        },
+        {
+          "case": "front_20cm",
+          "receipt": {
+            "utc": "2026-11-02T11:43:49.304748+00:00",
+            "event": "measured_placement",
+            "case": "front_20cm",
+            "actor_id": 20,
+            "requested_front_body_gap_m": 0.2,
+            "measured_front_body_gap_m": 0.20000359826738645,
+            "ego_bounds_m": {
+              "forward": [
+                -0.7896163513895971,
+                0.7634710104729265
+              ],
+              "right": [
+                -0.5625319268030466,
+                0.5635222419249715
+              ],
+              "z": [
+                -0.9404134750366211,
+                0.388666570186615
+              ]
+            },
+            "obstacle_bounds_m": {
+              "forward": [
+                0.963474608740313,
+                1.33883378924088
+              ],
+              "right": [
+                -0.1876794456253208,
+                0.18767921532628407
+              ],
+              "z": [
+                -0.9165970683097839,
+                0.9434029459953308
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": null,
+          "reason": "fresh JPEG/placement receipt unavailable",
+          "receipt_age_s": 33.0645215511322
+        },
+        {
+          "case": "front_30cm",
+          "receipt": {
+            "utc": "2026-11-02T11:43:58.329958+00:00",
+            "event": "measured_placement",
+            "case": "front_30cm",
+            "actor_id": 21,
+            "requested_front_body_gap_m": 0.3,
+            "measured_front_body_gap_m": 0.30000152820062453,
+            "ego_bounds_m": {
+              "forward": [
+                -0.7896163513895971,
+                0.7634710104729265
+              ],
+              "right": [
+                -0.5625319268030466,
+                0.5635222419249715
+              ],
+              "z": [
+                -0.9404134750366211,
+                0.388666570186615
+              ]
+            },
+            "obstacle_bounds_m": {
+              "forward": [
+                1.063472538673551,
+                1.4388314771926218
+              ],
+              "right": [
+                -0.18767896975307963,
+                0.18767807682942816
+              ],
+              "z": [
+                -0.9165970683097839,
+                0.9434029459953308
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": null,
+          "reason": "fresh JPEG/placement receipt unavailable",
+          "receipt_age_s": 24.97501802444458
+        },
+        {
+          "case": "front_40cm",
+          "receipt": {
+            "utc": "2026-11-02T11:44:07.359991+00:00",
+            "event": "measured_placement",
+            "case": "front_40cm",
+            "actor_id": 22,
+            "requested_front_body_gap_m": 0.4,
+            "measured_front_body_gap_m": 0.4000011080889294,
+            "ego_bounds_m": {
+              "forward": [
+                -0.7896163513895971,
+                0.7634710104729265
+              ],
+              "right": [
+                -0.5625319268030466,
+                0.5635222419249715
+              ],
+              "z": [
+                -0.9404134750366211,
+                0.388666570186615
+              ]
+            },
+            "obstacle_bounds_m": {
+              "forward": [
+                1.163472118561856,
+                1.5388331909989859
+              ],
+              "right": [
+                -0.187679382305447,
+                0.18767903666466168
+              ],
+              "z": [
+                -0.9165970683097839,
+                0.9434029459953308
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": null,
+          "reason": "fresh JPEG/placement receipt unavailable",
+          "receipt_age_s": 16.89241862297058
+        },
+        {
+          "case": "roadside_left",
+          "receipt": {
+            "utc": "2026-11-02T11:44:16.381402+00:00",
+            "event": "measured_placement",
+            "case": "roadside_left",
+            "actor_id": 23,
+            "requested_front_body_gap_m": 0.2,
+            "measured_front_body_gap_m": 0.20000297390930655,
+            "ego_bounds_m": {
+              "forward": [
+                -0.7896163513895971,
+                0.7634710104729265
+              ],
+              "right": [
+                -0.5625319268030466,
+                0.5635222419249715
+              ],
+              "z": [
+                -0.9404134750366211,
+                0.388666570186615
+              ]
+            },
+            "obstacle_bounds_m": {
+              "forward": [
+                0.9634739843822331,
+                1.3388329229013038
+              ],
+              "right": [
+                -1.1378894919680818,
+                -0.762532445385574
+              ],
+              "z": [
+                -0.9165970683097839,
+                0.9434029459953308
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": null,
+          "reason": "fresh JPEG/placement receipt unavailable",
+          "receipt_age_s": 8.799670219421387
+        },
+        {
+          "case": "roadside_right",
+          "receipt": {
+            "utc": "2026-11-02T11:44:25.408752+00:00",
+            "event": "measured_placement",
+            "case": "roadside_right",
+            "actor_id": 24,
+            "requested_front_body_gap_m": 0.2,
+            "measured_front_body_gap_m": 0.2000047119495889,
+            "ego_bounds_m": {
+              "forward": [
+                -0.7896163513895971,
+                0.7634710104729265
+              ],
+              "right": [
+                -0.5625319268030466,
+                0.5635222419249715
+              ],
+              "z": [
+                -0.9404134750366211,
+                0.388666570186615
+              ]
+            },
+            "obstacle_bounds_m": {
+              "forward": [
+                0.9634757224225154,
+                1.3388346609415862
+              ],
+              "right": [
+                0.7635222912137181,
+                1.1388793377962259
+              ],
+              "z": [
+                -0.9165972471237183,
+                0.9434027671813965
+              ]
+            }
+          },
+          "source_clock": "wall",
+          "source_topic": "/sensing/camera/econ_front/image_rect/compressed",
+          "image": "docs/evidence/service_usability_20261102/live_carla/nearfield_actual_02_camera_roadside_right_front.jpg",
+          "image_sha256": "43fb4f37ee8191781d8fe501bc74405a530662e1c4549fda2e33f079b0a89e74",
+          "source_stamp_s": 1793619865.9777496,
+          "source_age_s": 0.15550470352172852,
+          "frame": "camera_front"
+        }
+      ]
+    }
+  ]
+}

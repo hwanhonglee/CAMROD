@@ -1,0 +1,5 @@
+HH_261103 - Transcript summary from the original completed pytest run; not a rerun.
+Command: python3 -m pytest -q camrod_ui/test/test_charging_access_backend.py camrod_ui/test/test_charging_access_api.py camrod_ui/test/test_ui_backend_stop.py camrod_ui/test/test_drop_zone_departure_origin.py camrod_ui/test/test_battery_return_policy.py --junitxml=docs/evidence/service_usability_20261103/live_carla/cargo_contact_release_regression.xml
+Actual console result: 245 passed in 0.88s
+Actual generated JUnit XML mechanically copied unchanged to cargo_fix_tests.xml.
+Install result: camrod_ui direct colcon build completed successfully in 3.59s; no frontend compilation.

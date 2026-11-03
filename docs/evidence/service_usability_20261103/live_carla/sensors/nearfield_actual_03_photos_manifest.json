@@ -1,0 +1,87 @@
+{
+  "evidence_type": "ACTUAL_CAMERA_SCREENSHOT_SEQUENCE_NOT_CONTINUOUS_NOT_BRAKING",
+  "source_manifest": "docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera.jsonl",
+  "source_manifest_sha256": "eaaf602b3b74dc2ef63037af631601ff4c89783125eeb89873c468ba52d1c33c",
+  "generator_sha256": "38525014745e852b32cd0dee6e8289a100057df8af6ac3786fd31f25f3404147",
+  "artifacts": {
+    "png": {
+      "path": "docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_photos.png",
+      "bytes": 2004013,
+      "sha256": "89338c8e079dcb82f5610d29287c803e5b5fcae3820c5b775b9e10e8a5c696c6"
+    },
+    "gif": {
+      "path": "docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_photos.gif",
+      "bytes": 2608697,
+      "sha256": "db68c82e34145800a7b80afb12e9296fc1e990c38766fa1e2ada59de058eadd9"
+    }
+  },
+  "rendering": "PNG nearest-neighbor thumbnails only; GIF native 800x600 JPEG decode with palette quantization. Labels outside scene pixels. No object drawing, AI or frame interpolation.",
+  "gif_frames": 7,
+  "gif_frame_duration_ms": 1500,
+  "png_dimensions": [
+    1280,
+    1390
+  ],
+  "gif_dimensions": [
+    960,
+    726
+  ],
+  "photos": [
+    {
+      "case": "baseline_end",
+      "label": "No owned test actor",
+      "capture_utc": "2026-11-03 08:17:01.692 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_baseline_end_front.jpg",
+      "source_sha256": "347b1b959ae997776dfd8df8e7cea07295ab4f088a8a67851f750084f04b3730",
+      "source_stamp_s": 1793693821.6727424
+    },
+    {
+      "case": "front_10cm",
+      "label": "BBox front 10.0002 cm",
+      "capture_utc": "2026-11-03 08:17:07.566 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_front_10cm_front.jpg",
+      "source_sha256": "5f605885bee172f97b76238993a222aa14c195ef506480522a5b73f7e8f00e5f",
+      "source_stamp_s": 1793693827.5572457
+    },
+    {
+      "case": "front_20cm",
+      "label": "BBox front 20.0002 cm",
+      "capture_utc": "2026-11-03 08:17:16.632 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_front_20cm_front.jpg",
+      "source_sha256": "42530f0fde91cef8bbe3e92c0d5aac6e6297b9d94a55a2e547fc478b9e93dc2f",
+      "source_stamp_s": 1793693836.6140337
+    },
+    {
+      "case": "front_30cm",
+      "label": "BBox front 30.0003 cm",
+      "capture_utc": "2026-11-03 08:17:25.663 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_front_30cm_front.jpg",
+      "source_sha256": "553c0ff007a890d6b1e67d23a1dbd5d0d433383e2a9fdab0907794e426a49127",
+      "source_stamp_s": 1793693845.651622
+    },
+    {
+      "case": "front_40cm",
+      "label": "BBox front 40.0001 cm",
+      "capture_utc": "2026-11-03 08:17:34.722 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_front_40cm_front.jpg",
+      "source_sha256": "2f3f91ea99c320b37b8c89bbb4c9aece8cde5aca83fd356ea1d134d7fbe67551",
+      "source_stamp_s": 1793693854.7089953
+    },
+    {
+      "case": "roadside_left",
+      "label": "BBox front 20.0000 cm; side 20.0001 cm",
+      "capture_utc": "2026-11-03 08:17:43.772 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_roadside_left_front.jpg",
+      "source_sha256": "062dc881c2a3e42f6be07dc46fb0ea38719f5e0b9469dc9a16a00d482309a0f9",
+      "source_stamp_s": 1793693863.7589593
+    },
+    {
+      "case": "roadside_right",
+      "label": "BBox front 20.0001 cm; side 20.0000 cm",
+      "capture_utc": "2026-11-03 08:17:52.729 UTC",
+      "path": "/home/hong/camrod_service_test_ws/src/docs/evidence/service_usability_20261103/live_carla/sensors/nearfield_actual_03_camera_roadside_right_front.jpg",
+      "source_sha256": "b9d13c86fe6472d3db0c48098f86a06e06094785a07e881ea1d704508975d3cc",
+      "source_stamp_s": 1793693872.7165632
+    }
+  ]
+}
