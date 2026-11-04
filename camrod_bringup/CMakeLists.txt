@@ -61,6 +61,9 @@ install(
     # config now carries deployment overrides and must not be force-mirrored.
     scripts/gnss_dr_test_node.py
     scripts/goal_tolerance_probe_node.py
+    # 261104 - Boot-time service wrapper and its installer.
+    scripts/launch_bringup.sh
+    scripts/install_bringup_service.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -79,6 +82,13 @@ install(
 
 install(
   DIRECTORY docs
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# 261104 - Keep the boot-time unit beside the package that launches it, the way
+# camrod_platform keeps camrod-can0.service.
+install(
+  DIRECTORY systemd
   DESTINATION share/${PROJECT_NAME}
 )
 

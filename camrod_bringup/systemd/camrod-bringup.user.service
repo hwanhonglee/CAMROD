@@ -1,0 +1,34 @@
+[Unit]
+Description=CAMROD bringup (ros2 launch camrod_bringup bringup.launch.py)
+# 261104 - Runs as a *user* unit tied to the desktop session on purpose.
+# bringup starts camrod_ui_window, a browser process that must connect to the X
+# server, so it needs DISPLAY/XAUTHORITY. GNOME imports both into the systemd
+# user environment, so a unit ordered after graphical-session.target inherits
+# them instead of hardcoding a display number that changes between boots.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/nvidia/camrod_ws
+
+# 261104 - No startup delay: launch as soon as the desktop session is up.
+# The previous system unit slept 60 s to let CAN/USB settle; GDM autologin
+# itself takes ~20-30 s from power-on, which now covers that window.
+ExecStart=/usr/local/bin/camrod-bringup
+
+# ros2 launch treats SIGINT like Ctrl-C and shuts nodes down in order.
+KillSignal=SIGINT
+KillMode=control-group
+TimeoutStopSec=60
+
+# 261104 - Never silently revive the autonomy stack. Switch to on-failure only
+# if an operator is expected to be watching.
+Restart=no
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=camrod-bringup
+
+[Install]
+WantedBy=graphical-session.target
