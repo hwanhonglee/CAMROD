@@ -110,7 +110,7 @@ public:
     slowdown_start_tag_distance_m_ = std::abs(declare_parameter<double>(
       "slowdown_start_tag_distance_m", 0.80));
     translation_stop_tag_distance_m_ = std::abs(declare_parameter<double>(
-      "translation_stop_tag_distance_m", 0.40));
+      "translation_stop_tag_distance_m", 0.435));
     minimum_approach_turn_radius_m_ = std::abs(declare_parameter<double>(
       "minimum_approach_turn_radius_m", 0.85));
     final_yaw_angular_speed_radps_ = std::abs(declare_parameter<double>(
@@ -947,7 +947,7 @@ private:
   double maximum_angular_speed_radps_, maximum_approach_angle_rad_;
   double reverse_approach_speed_mps_, final_insertion_speed_mps_;
   double slowdown_start_tag_distance_m_{0.80};
-  double translation_stop_tag_distance_m_{0.40};
+  double translation_stop_tag_distance_m_{0.435};
   double minimum_approach_turn_radius_m_{0.85};
   double final_yaw_angular_speed_radps_{0.20};
   // HH_260819 - Deprecated robot-center distance parameters remain declared so

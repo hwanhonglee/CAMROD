@@ -24,8 +24,8 @@ def test_camera_range_thresholds_are_exact() -> None:
     package = CONTROL / "config/parking.yaml"
     parameters = _parameters(package)
     assert parameters["slowdown_start_tag_distance_m"] == 0.80
-    # HH_260824 - Stop translation at the revised 0.40 m camera threshold.
-    assert parameters["translation_stop_tag_distance_m"] == 0.40
+    # HH_260824 - Stop translation at the revised 0.435 m camera threshold.
+    assert parameters["translation_stop_tag_distance_m"] == 0.435
     assert parameters["minimum_approach_turn_radius_m"] == 0.85
     assert parameters["final_yaw_angular_speed_radps"] == 0.20
     assert parameters["final_yaw_settle_hold_s"] == 0.8
@@ -69,7 +69,7 @@ def test_parking_parameter_mirrors_are_exact() -> None:
 
 # HH_260819 - Never resume blind translation after the camera-range stop.
 def test_translation_latches_off_before_yaw_and_charging_wait() -> None:
-    """No post-0.40 m phase may restore blind insertion or retry motion."""
+    """No post-0.435 m phase may restore blind insertion or retry motion."""
     source = NODE.read_text(encoding="utf-8")
     assert "tag_camera_distance_m_ <= translation_stop_tag_distance_m_" in source
     assert "transitionTo(State::FINAL_YAW_ALIGNMENT)" in source

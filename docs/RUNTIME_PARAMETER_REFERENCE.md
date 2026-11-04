@@ -201,10 +201,10 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 
 | Parameter | Reverse | AprilTag docking |
 |---|---:|---:|
-| Slowdown window | `0.30 m` remaining | UI camera range `0.80 -> 0.40 m` |
+| Slowdown window | `0.30 m` remaining | UI camera range `0.80 -> 0.43 m` |
 | Cruise raw speed | `0.444444 m/s` | `0.555556 m/s` |
 | Final raw speed | `0.138889 m/s` | `0.138889 m/s` |
-| Translation stop | station axis | `translation_stop_tag_distance_m: 0.40 m` |
+| Translation stop | station axis | `translation_stop_tag_distance_m: 0.435 m` |
 | Approach steering | heading/lateral correction | combined reverse + steering, minimum radius `0.85 m` |
 | Final yaw | map/station policy | heading-only, raw maximum `0.20 rad/s` |
 | Yaw settling | controller-specific | `0.8 s`, maximum residual rate `3 deg/s` |
