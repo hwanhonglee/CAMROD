@@ -3,25 +3,29 @@
 # HH_260930 - map-v26 (copy_park_v1.0.16) authors two drop_zone areas (7019, 7144).
 # Only dz_area_7144 is exported as the active station: planning picks the nearest
 # of several zones while control loads the first, so a single entry keeps them aligned.
+# 261104 - dz_area_7144 extended lengthwise so the charging dock pose clears the
+# cargo-access body check: south edge +0.600 m, north edge +0.604 m along their
+# outward normals. Both ends move together so the area centroid (the station the
+# control/planning/localization stacks share) stays put; it shifts 2 mm in x only.
 drop_zones:
   - id: "dz_area_7144"
     type: "drop_zone"
     source: "area"
-    x: -8.47366
+    x: -8.47572
     y: 40.391
     z: 0
     yaw_deg: -88.2127
     parking_method: "auto"
     corners:
-      - x: -9.61239
-        y: 38.2276
+      - x: -9.54039
+        y: 37.6319
         z: 0
-      - x: -10.0387
-        y: 42.2318
+      - x: -10.1148
+        y: 42.8311
         z: 0
-      - x: -7.36381
-        y: 42.5716
+      - x: -7.43995
+        y: 43.171
         z: 0
-      - x: -6.88622
-        y: 38.5571
+      - x: -6.81422
+        y: 37.9615
         z: 0

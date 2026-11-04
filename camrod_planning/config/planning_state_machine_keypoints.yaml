@@ -2,17 +2,18 @@
 # HH_260907 - Active map v23 has one shared parking/docking area (7019).
 # HH_260930 - map-v26 moves the active parking/docking station to area 7144.
 # Former area 2320 is vehicle-entry space and must not remain a return target.
+# 261104 - Follows the dz_area_7144 lengthwise extension; only x moved, by 2 mm.
 keypoints:
   drop_zone:
     frame_id: "map"
-    x: -8.47366
+    x: -8.47572
     y: 40.391
     z: 0
     # HH_260909 - Follows the drop_zone station yaw retrimmed to -88.2127 deg.
     yaw_deg: -88.2127
   garage:
     frame_id: "map"
-    x: -8.47366
+    x: -8.47572
     y: 40.391
     z: 0
     # HH_260909 - Follows the drop_zone station yaw retrimmed to -88.2127 deg.

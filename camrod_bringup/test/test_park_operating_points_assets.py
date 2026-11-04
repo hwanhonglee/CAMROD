@@ -86,7 +86,8 @@ def test_current_area_export_configs_are_synchronized() -> None:
     assert [(drop["id"], drop["parking_method"]) for drop in drops] == [
         ("dz_area_7144", "auto"),
     ]
-    assert drops[0]["x"] == -8.47366
+    # 261104 - dz_area_7144 extended lengthwise; the area centroid shifted 2 mm in x only.
+    assert drops[0]["x"] == -8.47572
     assert drops[0]["y"] == 40.391
     # HH_260909 - Station yaw retrimmed to -88.2127 deg.
     assert drops[0]["yaw_deg"] == -88.2127
