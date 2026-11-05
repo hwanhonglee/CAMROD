@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { advanceWheelRoll, bodyPoseDelta, buildRouteRibbon, clamp, estimateWheelStep, interpolatePose,
-  mapToThree, motionMayAnimate, navigationCameraHeading, navigationMotionKind, poseIsFresh, wrapAngle } from './navigationMath';
+import { advanceWheelRoll, bodyPoseDelta, buildRouteRibbon, clamp, followWheelSteer,
+  interpolatePose, mapToThree, motionMayAnimate, navigationCameraHeading, navigationMotionKind, poseIsFresh,
+  smoothBodyRate, wheelRollDistance, wheelSteerTarget, wrapAngle } from './navigationMath';
+import { replaceWheelMeshesWithCleanTires } from './navigationWheelVisuals';
 import { illustrativeScenerySites, illustrativeMapScenerySites, illustrativeMapRoads } from './illustrativeScenery';
 import { classifyNavigationObject, createNavigationObjectVisual,
   updateNavigationObjectVisual, navigationObjectDimensions } from './navigationObjectVisuals';
@@ -269,7 +271,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     const host = hostRef.current;
     if (!host || !graphicsReady) return undefined;
     let disposed = false, renderer, animationId = 0, observer;
-    let model = null, wheels = [], modelLength = null, motionKind = 'stationary';
+    let model = null, wheels = [], modelLength = null, motionKind = 'stationary', bodyRate = null;
     let routeWorld = null, routeWorldOrigin = null, routeWorldKey = '';
     let baseMapWorldOrigin = null, baseMapWorldKey = '';
     let areaWorld = null, areaWorldOrigin = null, areaWorldKey = '';
@@ -545,6 +547,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       // HH_261001 - The model is already metres, +X forward/+Y up/+Z right. Never rescale.
       model.scale.set(1, 1, 1);
       applyModelSurfaceFinish(model, dark);
+      replaceWheelMeshesWithCleanTires(model, WHEEL_NAMES, dark);
       robot.add(model);
       robot.updateMatrixWorld(true);
       // HH_261002 - Animate the existing independent steer/spin joints. Derive
@@ -627,10 +630,13 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       // speed: zero-turn rolls opposite wheels, crab steers all four sideways.
       const step = moving ? bodyPoseDelta(previous, currentPose) : null;
       motionKind = navigationMotionKind(step);
+      // HJ_261105 - Steer from the filtered body rate (rate-limited) so pose
+      // noise does not shake the wheels; roll from the raw travelled distance.
+      bodyRate = smoothBodyRate(bodyRate, step, delta);
       wheels.forEach((wheel) => {
-        const estimate = estimateWheelStep(step, wheel.position, wheel.steerRad);
-        wheel.steerRad = estimate.steer;
-        wheel.rollRad = advanceWheelRoll(wheel.rollRad, estimate.distance);
+        const target = wheelSteerTarget(bodyRate, wheel.position, wheel.steerRad);
+        wheel.steerRad = followWheelSteer(wheel.steerRad, target, delta);
+        wheel.rollRad = advanceWheelRoll(wheel.rollRad, wheelRollDistance(step, wheel.position, wheel.steerRad));
         wheelQuaternion.setFromAxisAngle(steerAxis, wheel.steerRad);
         wheel.steer.quaternion.copy(wheel.steerRest).multiply(wheelQuaternion);
         wheelQuaternion.setFromAxisAngle(wheelAxis, wheel.rollRad);

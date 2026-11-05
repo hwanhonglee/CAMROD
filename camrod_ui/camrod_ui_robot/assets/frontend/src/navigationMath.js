@@ -86,6 +86,59 @@ export function estimateWheelStep(step, position, previousSteer = 0) {
   return { steer, distance };
 }
 
+// HJ_261105 - Per-frame pose deltas are noisy (localization jitter, sample
+// interpolation), so steering straight from them shakes the wheels left/right.
+// Steer from a low-pass body rate instead; reset it when motion stops.
+export function smoothBodyRate(previous, step, deltaSeconds, timeConstant = 0.4) {
+  if (!step || ![step.x, step.y, step.yaw, deltaSeconds].every(finiteNumber) || deltaSeconds <= 0) {
+    return null;
+  }
+  const rate = { x: step.x / deltaSeconds, y: step.y / deltaSeconds, yaw: step.yaw / deltaSeconds };
+  // Start from rest so one noisy first frame cannot aim the wheels.
+  previous = previous || { x: 0, y: 0, yaw: 0 };
+  const alpha = 1 - Math.exp(-clamp(deltaSeconds, 0, 0.1) / Math.max(1e-3, timeConstant));
+  return { x: previous.x + (rate.x - previous.x) * alpha, y: previous.y + (rate.y - previous.y) * alpha,
+    yaw: previous.yaw + (rate.yaw - previous.yaw) * alpha };
+}
+
+// HJ_261105 - Below this wheel speed (m/s) the filtered rate is mostly
+// localization jitter; hold the displayed steer instead of re-aiming.
+export const WHEEL_STEER_MIN_SPEED_MPS = 0.03;
+
+export function wheelSteerTarget(rate, position, previousSteer) {
+  if (!rate || !position || ![rate.x, rate.y, rate.yaw, position.x, position.y].every(finiteNumber)) {
+    return previousSteer;
+  }
+  const speed = Math.hypot(rate.x - rate.yaw * position.y, rate.y + rate.yaw * position.x);
+  return speed < WHEEL_STEER_MIN_SPEED_MPS ? previousSteer
+    : estimateWheelStep(rate, position, previousSteer).steer;
+}
+
+// HJ_261105 - Move the displayed steer toward its target with damping, a rate
+// limit and a ~1 degree deadband. A target 180 degrees away is the same wheel
+// pose rolling backwards, so take the near equivalent instead of sweeping.
+export function followWheelSteer(current, target, deltaSeconds, maxRate = 3.0) {
+  if (!finiteNumber(target)) return current;
+  if (!finiteNumber(current)) return target;
+  let goal = target;
+  while (goal - current > Math.PI / 2) goal -= Math.PI;
+  while (goal - current < -Math.PI / 2) goal += Math.PI;
+  const error = goal - current;
+  if (Math.abs(error) < 0.02) return current;
+  const dt = clamp(finiteNumber(deltaSeconds) ? deltaSeconds : 0, 0, 0.1);
+  const limit = Math.max(0, maxRate) * dt;
+  return current + clamp(error * (1 - Math.exp(-10 * dt)), -limit, limit);
+}
+
+// HJ_261105 - Signed rolling distance of one wheel along its displayed steer.
+export function wheelRollDistance(step, position, steer) {
+  if (!step || !position || ![step.x, step.y, step.yaw, position.x, position.y, steer].every(finiteNumber)) {
+    return 0;
+  }
+  const x = step.x - step.yaw * position.y, y = step.y + step.yaw * position.x;
+  return x * Math.cos(steer) + y * Math.sin(steer);
+}
+
 // HH_261002 - Keep an orientation reference during zero-turn/crab so the body
 // can visibly rotate/translate sideways. Resume rear-follow on longitudinal travel.
 export function navigationCameraHeading(current, target, deltaSeconds, kind) {

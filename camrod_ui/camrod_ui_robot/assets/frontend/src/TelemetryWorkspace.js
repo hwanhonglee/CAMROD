@@ -73,8 +73,9 @@ export function parkingPolicyMessage(policy = {}) {
 
 // This is a station action, not a campsite Return shortcut. Backend rechecks
 // the authoritative station state before granting any docking motion.
+// HJ_261105 - CHARGING is excluded: the backend answers already_charging, so the button is not offered.
 export function dockingAllowedAtServiceState(serviceStateName) {
-  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
+  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING']
     .includes(serviceStateName);
 }
 
@@ -101,7 +102,9 @@ export function DockingCommandButton({ className = 'manual-return-btn', disabled
   };
   return <>
     <button type="button" className={className} onClick={requestDocking} disabled={disabled || pending || !stationAllowed}
-      title={stationAllowed ? '자동 주차 정책과 별도로 충전 요청' : '충전은 대기·충전 장소에 정차하거나 주차 중일 때만 가능합니다'}>
+      title={stationAllowed ? '자동 주차 정책과 별도로 충전 요청'
+        : serviceStateName === 'CHARGING' ? '이미 충전 중입니다'
+          : '충전은 대기·충전 장소에 정차하거나 주차 중일 때만 가능합니다'}>
       {pending ? '충전 요청 중' : '충전'}
     </button>
     {status && <span className="manual-motion-status" role="status">{status}</span>}

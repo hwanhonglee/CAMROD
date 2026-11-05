@@ -41,21 +41,16 @@ public:
     rcl_interfaces::msg::ParameterDescriptor guard_startup;
     guard_startup.read_only = true;
     front_guard_mode_ = declare_parameter<bool>("front_guard_mode", false, guard_startup);
-    front_guard_.body_front_m = declare_parameter<double>("front_guard_body_front_m", 0.70837);
-    front_guard_.body_left_m = declare_parameter<double>("front_guard_body_left_m", 0.53505);
-    front_guard_.body_right_m = declare_parameter<double>("front_guard_body_right_m", 0.53495);
-    front_guard_.body_bottom_m = declare_parameter<double>("front_guard_body_bottom_m", -0.15275);
-    front_guard_.body_top_m = declare_parameter<double>("front_guard_body_top_m", 0.94188);
-    front_guard_.distance_m = declare_parameter<double>("front_guard_distance_m", 0.30);
-    front_guard_.ground_clearance_m = declare_parameter<double>("front_guard_ground_clearance_m", 0.05);
-    if (front_guard_mode_ && (!std::isfinite(front_guard_.distance_m) || front_guard_.distance_m <= 0.0 ||
-        !std::isfinite(front_guard_.ground_clearance_m) || front_guard_.ground_clearance_m < 0.0 ||
-        !std::isfinite(front_guard_.body_front_m) || front_guard_.body_front_m <= 0.0 ||
-        !std::isfinite(front_guard_.body_left_m) || front_guard_.body_left_m <= 0.0 ||
-        !std::isfinite(front_guard_.body_right_m) || front_guard_.body_right_m <= 0.0 ||
-        !std::isfinite(front_guard_.body_bottom_m) || !std::isfinite(front_guard_.body_top_m) ||
-        front_guard_.body_top_m <= front_guard_.body_bottom_m + front_guard_.ground_clearance_m)) {
-      throw std::invalid_argument("invalid front LiDAR guard body/ground/clearance bounds");
+    // HJ_261105 - Explicit robot_center_link box bounds replace body extents + distance.
+    const FrontLidarGuardConfig guard_defaults;
+    front_guard_.x_min_m = declare_parameter<double>("front_guard_x_min_m", guard_defaults.x_min_m);
+    front_guard_.x_max_m = declare_parameter<double>("front_guard_x_max_m", guard_defaults.x_max_m);
+    front_guard_.y_min_m = declare_parameter<double>("front_guard_y_min_m", guard_defaults.y_min_m);
+    front_guard_.y_max_m = declare_parameter<double>("front_guard_y_max_m", guard_defaults.y_max_m);
+    front_guard_.z_min_m = declare_parameter<double>("front_guard_z_min_m", guard_defaults.z_min_m);
+    front_guard_.z_max_m = declare_parameter<double>("front_guard_z_max_m", guard_defaults.z_max_m);
+    if (front_guard_mode_ && !validFrontLidarGuardConfig(front_guard_)) {
+      throw std::invalid_argument("invalid front LiDAR guard x/y/z min/max bounds");
     }
     // HH_260421 - Use filtered lidar points as default cost-grid input.
     input_topic_ = declare_parameter<std::string>(

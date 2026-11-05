@@ -194,6 +194,7 @@ class RecallTargetPolicyTest(unittest.TestCase):
         )
         node._goal_keypoint = lambda _key: keypoint
         node._reset_nav2_goal_status = lambda: None
+        node._is_turnaround_area_key = lambda _key: False
 
         request_stamp = RosTime(sec=41, nanosec=73)
         self.assertTrue(

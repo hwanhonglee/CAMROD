@@ -45,7 +45,9 @@
     extrinsic_z: -0.07    # HH_260623 - Camera is 10 cm below LiDAR.
 
     # HH_260529 - Points closer than this [m] are ignored.
-    lidar_min_forward_m: 1.0
+    # HJ_261105 - 0.5 m from the LiDAR (x=0.763 m) starts fusion near
+    # robot x=1.26 m instead of 1.76 m.
+    lidar_min_forward_m: 0.5
 
     # Clustering / tracking
     n_closest:     5

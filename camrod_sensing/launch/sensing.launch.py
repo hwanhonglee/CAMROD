@@ -415,6 +415,10 @@ def generate_launch_description():
                 # and prevented /sensing/inflation_cost_grid YAML params from applying.
                 output="screen",
                 parameters=[LaunchConfiguration("inflation_cost_grid_param_file")],
+                # HJ_261105 - Restart the merged grid after a crash. The gate
+                # stops on a >1 s stale grid while the node comes back.
+                respawn=True,
+                respawn_delay=2.0,
                 condition=IfCondition(LaunchConfiguration("enable_inflation_cost_grid")),
             ),
         ]),

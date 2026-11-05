@@ -1,6 +1,7 @@
 """HH_261102 - Keep the experimental raw front guard bounded, opt-in, and tied to measured calibration."""
 
 from pathlib import Path
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,14 +13,18 @@ def test_front_guard_uses_ground_segmented_raw_points_and_measured_body():
     assert sensing.read_bytes() == mirror.read_bytes()
     guard = yaml.safe_load(sensing.read_text())["/**"]["ros__parameters"]
     robot = yaml.safe_load((ROOT / "camrod_bringup/config/sensor_kit/robot_params.yaml").read_text())["/**"]["ros__parameters"]["robot"]["body_extents"]
-    for parameter, dimension in (("front", "front"), ("left", "left"), ("right", "right"),
-                                  ("bottom", "bottom_z"), ("top", "top_z")):
-        assert guard[f"front_guard_body_{parameter}_m"] == robot[dimension]
+    # HJ_261105 - The explicit x/y/z box still derives from the measured body.
+    assert guard["front_guard_x_min_m"] == robot["front"]
+    assert guard["front_guard_x_max_m"] == pytest.approx(robot["front"] + 0.30)
+    assert guard["front_guard_y_min_m"] == -robot["right"]
+    assert guard["front_guard_y_max_m"] == robot["left"]
+    assert guard["front_guard_z_max_m"] == robot["top_z"]
     assert guard["input_topics"] == ["/sensing/lidar/points_filtered"]
     assert guard["raw_lidar_cost_enabled"] is False
-    assert guard["front_guard_distance_m"] == 0.30
+    assert not any(key.startswith(("front_guard_body_", "front_guard_distance", "front_guard_ground"))
+                   for key in guard)
     ground = yaml.safe_load((ROOT / "camrod_sensing/config/lidar/ground_seg_params.yaml").read_text())["/sensing/lidar/ground_segmentation"]["ros__parameters"]
-    assert guard["front_guard_ground_clearance_m"] == ground["groundInlierThreshold"]
+    assert guard["front_guard_z_min_m"] == pytest.approx(robot["bottom_z"] + ground["groundInlierThreshold"])
     assert guard["route_lanelet_filter_enable"] is False
     assert guard["ego_clear_radius_m"] == 0.0
 

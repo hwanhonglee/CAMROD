@@ -327,6 +327,8 @@ class PlanningStateMachineNode(Node):
         self.loop_rate_hz = float(self.declare_parameter("loop_rate_hz", 5.0).value)
 
         self.keypoints: Dict[str, Keypoint] = {}
+        # HJ_261105 - Roadside site key -> shared turnaround area keypoint key.
+        self.turnaround_area_for_site: Dict[str, str] = {}
         self.drop_zone_keypoints: list[Keypoint] = []
         self.drop_zone_polygons: Dict[str, list[tuple[float, float]]] = {}
         self.selected_return_keypoint: Optional[Keypoint] = None
@@ -674,8 +676,44 @@ class PlanningStateMachineNode(Node):
             j = i
         return inside
 
+    # HJ_261105 - B11-B13 return via a shared area: drive forward to it, turn
+    # around there, then take the reverse-retrace route to the drop zone.
+    def _merge_turnaround_areas(self, data: dict) -> None:
+        raw_areas = data.get("turnaround_areas", [])
+        if not isinstance(raw_areas, list):
+            return
+        for area in raw_areas:
+            if not isinstance(area, dict):
+                continue
+            key_name = str(area.get("type", "")).strip()
+            serves = area.get("serves", [])
+            if not key_name or not isinstance(serves, list):
+                continue
+            self.keypoints[key_name] = Keypoint(
+                name=key_name,
+                frame_id=str(area.get("frame_id", "map")),
+                x=float(area.get("service_x", area.get("x", 0.0))),
+                y=float(area.get("service_y", area.get("y", 0.0))),
+                z=float(area.get("service_z", area.get("z", 0.0))),
+                yaw_deg=float(area.get("yaw_deg", 0.0)),
+                source_id=str(area.get("id", key_name)),
+            )
+            for site_key in serves:
+                self.turnaround_area_for_site[str(site_key)] = key_name
+
+    def _is_turnaround_area_key(self, key: str) -> bool:
+        return bool(key) and key in self.turnaround_area_for_site.values()
+
+    def _turnaround_area_for_return(self, msg: PlanningRecallRequest) -> str:
+        # Only the B11-B13 forward-loop request is redirected; the request sent
+        # after the area turnaround carries no roadside_forward marker.
+        if "roadside_forward" not in msg.source:
+            return ""
+        return self.turnaround_area_for_site.get(msg.site_name.strip(), "")
+
     # Implements `_merge_camping_sites` behavior.
     def _merge_camping_sites(self, data: dict) -> None:
+        self._merge_turnaround_areas(data)
         raw_sites = data.get("camping_sites", [])
         if not isinstance(raw_sites, list):
             return
@@ -1037,13 +1075,16 @@ class PlanningStateMachineNode(Node):
             not manual_navigation
             and not matched_mission_key
             and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
-            and self.active_mission_key == self.return_mission_key
+            and (
+                self.active_mission_key == self.return_mission_key
+                or self._is_turnaround_area_key(self.active_mission_key)
+            )
             and self.active_goal is not None
             and self._dist_xy(self.active_goal, msg) <= self.return_goal_key_preserve_distance_m
         ):
             # HH_260618 - Do not let a near-identical route-goal echo clear the
             # HH_260720 - Preserve the drop_zone semantic key for alignment and parking.
-            matched_mission_key = self.return_mission_key
+            matched_mission_key = self.active_mission_key
         if (
             not manual_navigation
             and not matched_mission_key
@@ -1086,6 +1127,9 @@ class PlanningStateMachineNode(Node):
                 else "regulated_return_goal"
             )
             self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, reason)
+        elif self._is_turnaround_area_key(self.active_mission_key):
+            # HJ_261105 - The turnaround-area leg is part of the cargo return.
+            self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "turnaround_area_goal")
         else:
             # HH_260618 - A fresh unmatched manual/UI goal must enter a driving
             # scenario instead of leaving stale WAIT_DZ/RETURN_TO_DROP_ZONE state.
@@ -1171,7 +1215,12 @@ class PlanningStateMachineNode(Node):
             and state_id == int(AvgServiceState.RETURN_WITH_CARGO)
             and "DONE" in description
             and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
-            and self.active_mission_key == self.return_mission_key
+            and (
+                self.active_mission_key == self.return_mission_key
+                # HJ_261105 - Same for the turnaround-area leg: its GOAL_REACHED
+                # starts the area maneuver.
+                or self._is_turnaround_area_key(self.active_mission_key)
+            )
         ):
             # HH_260701 - camping_site_maneuver_controller DONE can arrive just after it requests
             # the drop-zone route. Do not let that late phase event mask the
@@ -1266,6 +1315,22 @@ class PlanningStateMachineNode(Node):
         ):
             self.return_requested = False
             self.get_logger().info("ignored return_to_drop_zone: already at drop_zone")
+            return
+        area_key = self._turnaround_area_for_return(msg)
+        if area_key:
+            if (
+                self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
+                and self.active_mission_key == area_key
+            ):
+                return  # retry of the request already routed to the area
+            self._clear_maneuver_phase_override("turnaround_area")
+            if self._publish_auto_goal(area_key, "turnaround_area_return", force=True):
+                self.return_requested = False
+                self.warn_goal_sent = False
+                self._set_scenario(
+                    self.SCENARIO_RETURN_TO_DROP_ZONE,
+                    f"turnaround_area:{msg.site_name.strip()}",
+                )
             return
         self._clear_maneuver_phase_override("return_to_drop_zone")
         self.return_requested = True
@@ -1376,13 +1441,14 @@ class PlanningStateMachineNode(Node):
         force: bool = False,
         correlation_stamp: Optional[RosTime] = None,
     ) -> bool:
-        if key_name == self.return_mission_key:
+        if key_name == self.return_mission_key or self._is_turnaround_area_key(key_name):
             # HH_260721 - A campsite maneuver moves outside the lanelet planner.
             # Wait for centerline snapping to reflect the completed crab exit
             # before Nav2 captures its route start pose.
             if not self._return_start_pose_ready():
                 return False
-            self._select_nearest_return_keypoint_for_current_pose(source)
+            if key_name == self.return_mission_key:
+                self._select_nearest_return_keypoint_for_current_pose(source)
         kp = self._goal_keypoint(key_name)
         if kp is None:
             self.get_logger().warn(f"keypoint '{key_name}' not found")

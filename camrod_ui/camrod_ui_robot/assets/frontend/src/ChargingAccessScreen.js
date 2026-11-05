@@ -107,7 +107,7 @@ export default function ChargingAccessScreen({ access, batteryChargeComplete, on
         : phase === 'error' ? '이동할 수 없어요' : '짐을 꺼내시겠어요?';
   const instruction = !observed ? '잠시 기다려 주세요. 로봇에 접근하지 마세요.'
     : phase === 'departing' ? '멈출 때까지 로봇 주변을 비워 주세요.'
-      : phase === 'ready' ? (ready ? '짐을 꺼내셔도 됩니다.' : '정차 안내가 나올 때까지 기다려 주세요.')
+      : phase === 'ready' ? (ready ? '로봇에 짐을 실어주세요.' : '정차 안내가 나올 때까지 기다려 주세요.')
         : phase === 'error' ? '다시 시도하거나 관리자에게 문의해 주세요.'
           // HH_261102 - Missing SOC means unknown, not a measured low battery.
           : battery === null ? '배터리 확인 중입니다. 잠시 기다려 주세요.'

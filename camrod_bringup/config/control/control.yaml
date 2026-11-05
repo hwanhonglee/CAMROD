@@ -251,7 +251,9 @@
     exit_distance_m: 1.2
     # HH_260807 - Preserve 40% of the cruise reference: 0.80 km/h final.
     exit_speed_mps: 0.444444
-    exit_timeout_s: 30.0
+    # HJ_261105 - Counts only time the safety gate allows motion; an obstacle
+    # hold pauses it (safety_gate_status_topic), so a blocked exit waits.
+    exit_timeout_s: 60.0
 
     # =========================================================================
     # 4. TIMING AND RATES

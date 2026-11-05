@@ -1,5 +1,6 @@
 // HH_261001 - Verify metric coordinates, heading interpolation, and freshness-gated animation.
 import { advanceWheelRoll, bodyPoseDelta, buildRouteRibbon, dampHeading, estimateWheelStep, followCamera, interpolateAngle,
+  followWheelSteer, smoothBodyRate, wheelRollDistance, wheelSteerTarget,
   interpolatePose, mapToThree, motionMayAnimate, navigationCameraHeading, navigationMotionKind, poseIsFresh, signedTravelDistance } from './navigationMath';
 
 const data = () => ({ connected: true, pose: { x: 0, y: 0, yaw: 0, age_s: 0.1 }, mission: { phase: 'DRIVING', state: 'MOVING_TO_SITE' } });
@@ -155,4 +156,48 @@ test('detail angle cycles all four faces by orbiting only the camera', () => {
   });
   expect(pose).toEqual({ x: 10, y: 20, yaw: 0 });
   expect(followCamera(pose, 0, { x: 10, y: 20 }, 0, Math.PI)).toEqual(followCamera(pose, 0, { x: 10, y: 20 }));
+});
+
+// HJ_261105 - Displayed steer follows a filtered rate, not per-frame pose noise.
+const steerRun = (steps, position = wheelPositions[0], dt = 1 / 30) => {
+  let rate = null, steer = 0;
+  const history = [];
+  steps.forEach((step) => {
+    rate = smoothBodyRate(rate, step, dt);
+    steer = followWheelSteer(steer, wheelSteerTarget(rate, position, steer), dt);
+    history.push(steer);
+  });
+  return history;
+};
+
+test('straight driving with lateral pose jitter keeps the wheels nearly straight', () => {
+  // 0.5 m/s forward at 30 fps with +/-1.5 cm/frame lateral localization noise:
+  // the raw per-frame direction swings by about +/-42 degrees.
+  const steps = Array.from({ length: 300 }, (_, i) => ({ x: 0.5 / 30, y: (i % 2 ? 1 : -1) * 0.015, yaw: 0 }));
+  const raw = steps.map(step => Math.abs(estimateWheelStep(step, wheelPositions[0]).steer));
+  expect(Math.max(...raw)).toBeGreaterThan(0.6);
+  const history = steerRun(steps);
+  // A brief launch transient, then under ~1.5 degrees while cruising.
+  expect(Math.max(...history.map(Math.abs))).toBeLessThan(0.15);
+  expect(Math.max(...history.slice(30).map(Math.abs))).toBeLessThan(0.026);
+});
+
+test('stationary jitter never re-aims the wheels', () => {
+  const steps = Array.from({ length: 120 }, (_, i) => ({ x: 0, y: (i % 2 ? 1 : -1) * 0.0004, yaw: 0 }));
+  expect(steerRun(steps).every(steer => steer === 0)).toBe(true);
+});
+
+test('a crab command still turns the wheels sideways, rate-limited', () => {
+  const steps = Array.from({ length: 60 }, () => ({ x: 0, y: 0.3 / 30, yaw: 0 }));
+  const history = steerRun(steps);
+  history.slice(1).forEach((steer, i) => expect(Math.abs(steer - history[i])).toBeLessThanOrEqual(3.0 / 30 + 1e-9));
+  expect(history[history.length - 1]).toBeCloseTo(Math.PI / 2, 1);
+});
+
+test('roll distance follows the displayed steer and its 180 degree equivalent', () => {
+  const step = { x: 0.1, y: 0, yaw: 0 };
+  expect(wheelRollDistance(step, wheelPositions[0], 0)).toBeCloseTo(0.1);
+  expect(wheelRollDistance(step, wheelPositions[0], Math.PI)).toBeCloseTo(-0.1);
+  expect(followWheelSteer(Math.PI / 2 - 0.05, -Math.PI / 2 + 0.05, 1 / 30)).toBeGreaterThan(Math.PI / 2 - 0.05);
+  expect(wheelRollDistance(null, wheelPositions[0], 0)).toBe(0);
 });

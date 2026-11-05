@@ -229,6 +229,12 @@ if(BUILD_TESTING)
     ENVIRONMENT "ROS_DOMAIN_ID=188;ROS_LOCALHOST_ONLY=1"
   )
   # HH_261102 - Keep float32 charging admission coverage independent of obstacle-policy tests.
+  # HJ_261105 - Drop-zone phase timeouts pause during gate obstacle holds.
+  ament_add_gtest(test_safety_hold_paused_timer test/test_safety_hold_paused_timer.cpp)
+  target_include_directories(test_safety_hold_paused_timer PRIVATE include)
+  # HJ_261105 - Post-stop resume speed cap.
+  ament_add_gtest(test_resume_speed_limit test/test_resume_speed_limit.cpp)
+  target_include_directories(test_resume_speed_limit PRIVATE include)
   ament_add_gtest(test_charging_mission_wire_soc test/test_charging_mission_wire_soc.cpp)
   target_include_directories(test_charging_mission_wire_soc PRIVATE include)
   # HH_261102 - Separate pure swept-body proofs and isolated actual-controller trajectory checks.

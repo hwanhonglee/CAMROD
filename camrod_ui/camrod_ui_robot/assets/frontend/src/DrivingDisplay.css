@@ -144,6 +144,7 @@
 .dd-map-area { fill: var(--dd-accent); fill-opacity: .14; stroke: var(--dd-accent);
   stroke-opacity: .72; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .dd-map-area--drop_zone { fill: var(--dd-route); stroke: var(--dd-route); }
+.dd-map-area--turnaround_area { fill: #7559b8; stroke: #7559b8; }
 .dd-map-area--selected { fill-opacity: .34; stroke-opacity: 1; stroke-width: 2.4; }
 .dd-map-area-leader { stroke: var(--dd-muted); stroke-width: .75; stroke-opacity: .55;
   vector-effect: non-scaling-stroke; }

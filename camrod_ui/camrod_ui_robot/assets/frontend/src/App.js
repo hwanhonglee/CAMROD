@@ -44,6 +44,8 @@ const OPERATING_HOURS_GATE_ENABLED =
   process.env.REACT_APP_OPERATING_HOURS_GATE_ENABLED === 'true';
 const OPERATING_HOURS_START = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_START, 3);
 const OPERATING_HOURS_END = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_END, 23);
+// HJ_261105 - How long the measured "stopped, load the robot" cue stays before ordinary standby.
+export const CARGO_READY_NOTICE_MS = 3000;
 
 // HH_261024 - Guest screens have no inactivity deadline; explicit navigation
 // and completed missions return home without altering motion watchdogs.
@@ -1457,6 +1459,18 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const serviceMetrics = useServiceMetricsSummary(3000, !previewMode);
   const chargingAccess = useChargingAccess(connected && !previewMode);
   const chargingAccessLocked = chargingAccess.pending || chargingAccessBusy(chargingAccess.snapshot?.phase);
+  // HJ_261105 - After the staging move, the backend-measured stop is shown briefly as a loading cue,
+  // then ordinary standby takes over for destination selection. The timer only changes the screen;
+  // it never authorizes motion, and it restarts whenever the measured stop is lost and regained.
+  const cargoAccessReady = chargingAccess.snapshot?.phase === 'ready'
+    && chargingAccess.snapshot?.cargo_access_ready === true;
+  const [cargoReadyNoticeExpired, setCargoReadyNoticeExpired] = useState(false);
+  useEffect(() => {
+    setCargoReadyNoticeExpired(false);
+    if (!cargoAccessReady) return undefined;
+    const timer = setTimeout(() => setCargoReadyNoticeExpired(true), CARGO_READY_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [cargoAccessReady]);
 
   const previewMission = drivingPreviewSnapshot?.mission;
   const previewConnected = drivingPreviewSnapshot?.connected;
@@ -2751,9 +2765,17 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   // HH_261102 - Keep the stopped drop_zone status visible, but let ready use the existing service chooser.
   const chargingPhase = chargingAccess.snapshot?.phase;
+  // HJ_261105 - Operator stop/backend restart publishes OPERATOR_STOPPED while the robot stays on the
+  // charger; the backend charging contact (same fact that gates can_leave) keeps cargo access reachable.
+  // After the staging move, ready stays on the charging screen until the measured stop has been shown
+  // for CARGO_READY_NOTICE_MS; from then on the robot is in ordinary drop_zone standby.
+  const chargingContact = chargingAccess.snapshot?.platform_is_charging === true;
+  const chargingStandby = chargingContact
+    || (chargingPhase === 'ready' && !(cargoAccessReady && cargoReadyNoticeExpired))
+    || ['CHARGING', 'WAITING_FOR_CHARGING'].includes(serviceStateName);
   if (!previewMode && (chargingAccessLocked || chargingPhase === 'error'
     || (showWaiting && !showServiceSafetyGate && !activeModal && !missionDispatch.active
-      && (chargingPhase === 'ready' || ['CHARGING', 'WAITING_FOR_CHARGING'].includes(serviceStateName))))) {
+      && chargingStandby))) {
     return <ChargingAccessScreen access={chargingAccess} batteryChargeComplete={batteryChargeComplete}
       onServices={handleWaitingClick} onStop={handleStopMove} adminEntry={adminEntryZone} />;
   }
@@ -3053,7 +3075,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               setShowWaiting(true);
             }}
           >
-            ← 대기 화면으로
+            {/* HJ_261105 - Name the screen this button actually returns to. */}
+            {chargingStandby ? '← 충전 화면으로' : '← 대기 화면으로'}
           </button>
         </main>
 

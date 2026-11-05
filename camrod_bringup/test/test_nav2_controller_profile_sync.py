@@ -592,7 +592,10 @@ def test_safety_gate_evaluates_the_final_scaled_command() -> None:
     assert "const auto evaluated_command = scaleCommand(command);" in source
     assert "motion_cost_stop_.evaluate(evaluated_command, now_sec)" in source
     assert "cost_decision, evaluated_command, now_sec" in source
-    assert "publishCommand(evaluated_command);" in source
+    # HJ_261105 - The post-stop resume cap may only shrink the checked command.
+    assert "auto published_command = evaluated_command;" in source
+    assert "resume_speed_limit_.apply(" in source
+    assert "publishCommand(published_command);" in source
 
 
 # HH_260818 - Stop directly on classified fusion without raw LiDAR cost enabled.

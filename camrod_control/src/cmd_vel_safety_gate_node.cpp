@@ -41,6 +41,7 @@
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
 #include "camrod_control/recovery_hold_reset_policy.hpp"
+#include "camrod_control/resume_speed_limit.hpp"
 #include "camrod_control/voice_announcement_gate.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rcl_interfaces/msg/parameter_descriptor.hpp"
@@ -795,6 +796,16 @@ private:
     resume_after_hold_voice_timeout_s_ = std::max(
         0.0,
         declare_parameter<double>("resume_after_hold_voice_timeout_s", 3.0));
+    // HJ_261105 - After an obstacle/cost stop, cap the first seconds of motion
+    // so a missed re-detection cannot resume at full cruise speed.
+    ResumeSpeedLimitConfig resume_speed_limit_config;
+    resume_speed_limit_config.enabled =
+        declare_parameter<bool>("resume_speed_limit_enable", true);
+    resume_speed_limit_config.duration_s = std::max(
+        0.0, declare_parameter<double>("resume_speed_limit_duration_s", 4.0));
+    resume_speed_limit_config.max_linear_mps = std::max(
+        0.0, declare_parameter<double>("resume_speed_limit_max_mps", 0.2));
+    resume_speed_limit_.setConfig(resume_speed_limit_config);
     voice_state_topic_ = declare_parameter<std::string>(
         "voice_state_topic", "/voice/voice_announcer/state");
     speed_scale_ = declare_parameter<double>("speed_scale", 1.0);
@@ -1186,6 +1197,7 @@ private:
       if (latch_decision.blocked) {
         resume_after_hold_voice_pending_ = false;
         resume_after_hold_voice_gate_.reset();
+        resume_speed_limit_.onStopHeld();
         publishZero();
         logMotionCostStopDecision(latch_decision, now_sec);
         return;
@@ -1224,6 +1236,11 @@ private:
 
     if (!(opposite_route_recovery ? effectiveEnabledForRouteRecovery(now_sec)
                                   : effectiveEnabled(now_sec))) {
+      // The post-release cost hold countdown is part of the same stop.
+      if (motion_cost_stop_.latched() ||
+          motion_cost_stop_.holdUntilSec() > now_sec) {
+        resume_speed_limit_.onStopHeld();
+      }
       if (publish_zero_when_blocked_) {
         publishZero();
       }
@@ -1281,6 +1298,7 @@ private:
     }
     updatePolicyCostState();
     if (cost_decision.blocked) {
+      resume_speed_limit_.onStopHeld();
       if (publish_zero_when_blocked_) {
         publishZero();
       }
@@ -1318,7 +1336,24 @@ private:
       // after the initial zero command is not recovery evidence.
       route_safety_recovery_.observeRecoveryMotion();
     }
-    publishCommand(evaluated_command);
+    // HJ_261105 - Safety checks above used the uncapped command; only the
+    // published magnitude is reduced during the post-stop window.
+    const bool resume_limit_was_active = resume_speed_limit_.active(now_sec);
+    const auto limited = resume_speed_limit_.apply(
+        {evaluated_command.linear.x, evaluated_command.linear.y,
+         evaluated_command.angular.z},
+        now_sec);
+    if (!resume_limit_was_active && resume_speed_limit_.active(now_sec)) {
+      RCLCPP_INFO(get_logger(),
+                  "resume speed limit: max %.2f m/s for %.1f s after stop",
+                  resume_speed_limit_.config().max_linear_mps,
+                  resume_speed_limit_.config().duration_s);
+    }
+    auto published_command = evaluated_command;
+    published_command.linear.x = limited.linear_x;
+    published_command.linear.y = limited.linear_y;
+    published_command.angular.z = limited.angular_z;
+    publishCommand(published_command);
   }
 
   void updateManeuverPhases() {
@@ -2651,6 +2686,7 @@ private:
   bool enable_resume_after_hold_voice_gate_{true};
   std::string resume_after_hold_voice_key_{"safety.thankyou"};
   double resume_after_hold_voice_timeout_s_{3.0};
+  ResumeSpeedLimit resume_speed_limit_;
   std::string voice_state_topic_{"/voice/voice_announcer/state"};
   VoiceAnnouncementGate resume_after_hold_voice_gate_;
   bool resume_after_hold_voice_pending_{false};

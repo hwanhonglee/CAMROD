@@ -258,6 +258,11 @@ class DrivingSnapshotCache:
                     if record.get("source") != "drop_zones_yaml":
                         continue
                     label, site = "드롭존", None
+                elif kind == "turnaround_area":
+                    # HJ_261105 - B11-B13 return turnaround, from camping_sites.yaml.
+                    if record.get("source") != "camping_sites_yaml":
+                        continue
+                    label, site = "회차구간", None
                 else:
                     continue
                 points = validated_map_polygon(record.get("points"))

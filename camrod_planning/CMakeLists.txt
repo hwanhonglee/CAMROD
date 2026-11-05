@@ -327,6 +327,14 @@ if(BUILD_TESTING)
       "${CMAKE_CURRENT_SOURCE_DIR}/test/test_recall_target_policy.py"
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
   )
+  # HJ_261105 - B11-B13 return via the shared turnaround area.
+  ament_add_test(
+    test_turnaround_area_return
+    COMMAND
+      "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_turnaround_area_return.py"
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
 endif()
 
 ament_package()

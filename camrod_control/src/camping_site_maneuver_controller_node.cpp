@@ -658,11 +658,90 @@ private:
           }
         }
       }
+      loadTurnaroundAreas(document["turnaround_areas"]);
       RCLCPP_INFO(get_logger(), "loaded %zu campsite goal entries from %s",
                   camping_site_goals_.size(), camping_sites_yaml_.c_str());
     } catch (const std::exception &error) {
       RCLCPP_WARN(get_logger(), "failed to load camping_sites_yaml (%s): %s",
                   camping_sites_yaml_.c_str(), error.what());
+    }
+  }
+
+  // HJ_261105 - B11-B13 finish at a shared area: after the roadside crab
+  // exit the robot drives forward to it, turns around inside it without
+  // waiting, and then takes the reverse-retrace route to the drop zone.
+  void loadTurnaroundAreas(const YAML::Node &areas) {
+    turnaround_area_for_site_.clear();
+    turnaround_area_keys_.clear();
+    if (!areas || !areas.IsSequence()) {
+      return;
+    }
+    for (std::size_t index = 0; index < areas.size(); ++index) {
+      const YAML::Node item = areas[index];
+      if (!item["type"] || !item["service_x"] || !item["service_y"] ||
+          !item["serves"] || !item["serves"].IsSequence()) {
+        RCLCPP_WARN(get_logger(),
+                    "turnaround_areas[%zu] needs type, service_x/y and serves",
+                    index);
+        continue;
+      }
+      const std::string key = item["type"].as<std::string>();
+      camping_site_goals_[key] = makePose(
+          item["frame_id"] ? item["frame_id"].as<std::string>()
+                           : site_goal_frame_id_,
+          item["service_x"].as<double>(), item["service_y"].as<double>(),
+          item["service_z"] ? item["service_z"].as<double>() : 0.0,
+          item["yaw_deg"] ? item["yaw_deg"].as<double>() : 0.0);
+      camping_site_service_modes_[key] = CampsiteServiceMode::kTurnaround;
+      turnaround_area_keys_.insert(key);
+      for (const auto &site : item["serves"]) {
+        turnaround_area_for_site_[site.as<std::string>()] = key;
+      }
+      RCLCPP_INFO(get_logger(), "turnaround area %s serves %zu roadside sites",
+                  key.c_str(), item["serves"].size());
+    }
+  }
+
+  void armTurnaroundAreaLeg(const std::string &return_source) {
+    if (turnaround_area_active_ || turnaround_area_leg_pending_ ||
+        return_source.find("roadside_forward") == std::string::npos) {
+      return;
+    }
+    const auto area = turnaround_area_for_site_.find(site_goal_key_);
+    if (area == turnaround_area_for_site_.end()) {
+      return;
+    }
+    turnaround_area_pending_key_ = area->second;
+    turnaround_area_leg_pending_ = true;
+    RCLCPP_INFO(get_logger(), "%s return continues via turnaround area %s",
+                site_goal_key_.c_str(), area->second.c_str());
+  }
+
+  void clearTurnaroundArea() {
+    turnaround_area_leg_pending_ = false;
+    turnaround_area_active_ = false;
+    turnaround_area_pending_key_.clear();
+  }
+
+  void startTurnaroundAreaSequence() {
+    const std::string key = turnaround_area_pending_key_;
+    if (!routeGoalReachedForAutoStart()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "turnaround area %s waiting for route goal arrival",
+                           key.c_str());
+      return;
+    }
+    active_recall_wait_mission_ = false;
+    ensureGoalPairForAutoStart(key);
+    turnaround_area_leg_pending_ = false;
+    turnaround_area_active_ = true;
+    const auto result = startSequence("planning_state:" + key);
+    if (result.first) {
+      last_auto_key_ = key;
+    } else {
+      RCLCPP_ERROR(get_logger(), "turnaround area %s start failed: %s",
+                   key.c_str(), result.second.c_str());
+      turnaround_area_active_ = false;
     }
   }
 
@@ -1065,6 +1144,10 @@ private:
   void ensureGoalPairForAutoStart(const std::string &key) {
     // HH_260721 - Bind the mission key and service policy even when the UI pose
     // already matches YAML.
+    if (turnaround_area_keys_.count(key) == 0U) {
+      // A new campsite mission supersedes any unfinished turnaround leg.
+      clearTurnaroundArea();
+    }
     site_goal_key_ = key;
     active_service_mode_ = serviceModeForKey(key);
     const auto configured_goal = camping_site_goals_.find(key);
@@ -1125,10 +1208,21 @@ private:
   }
 
   void onPlanningState(const avg_msgs::msg::PlanningState &message) {
-    if (message.scenario_id ==
-            avg_msgs::msg::PlanningScenario::RETURN_TO_DROP_ZONE ||
-        message.active_mission_key == "drop_zone") {
+    if (turnaround_area_active_) {
+      // HJ_261105 - The area leg already runs under RETURN_TO_DROP_ZONE; only
+      // the final drop-zone goal acknowledges the post-turnaround request.
+      if (message.active_mission_key == "drop_zone") {
+        return_acknowledged_ = true;
+        clearTurnaroundArea();
+      }
+    } else if (message.scenario_id ==
+                   avg_msgs::msg::PlanningScenario::RETURN_TO_DROP_ZONE ||
+               message.active_mission_key == "drop_zone") {
       return_acknowledged_ = true;
+      if (message.active_mission_key == "drop_zone") {
+        // Planning chose the drop zone directly (no area configured there).
+        clearTurnaroundArea();
+      }
     }
     // HH_260824 - A return-route acknowledgement is still consumed above, but
     // no planning-state reissue may mutate the site key, service policy, or
@@ -1149,6 +1243,12 @@ private:
           phase_ == CampingSiteManeuverPhase::kError) {
         last_auto_key_.clear();
       }
+      return;
+    }
+    if (turnaround_area_leg_pending_ &&
+        message.active_mission_key == turnaround_area_pending_key_ &&
+        message.active_goal_source != "manual") {
+      startTurnaroundAreaSequence();
       return;
     }
     if (message.scenario_id !=
@@ -1233,6 +1333,7 @@ private:
       recall_final_return_requested_ = false;
       active_recall_wait_mission_ = false;
       recall_turnaround_return_active_ = false;
+      clearTurnaroundArea();
       return_requested_ = false;
       return_published_ = false;
       return_acknowledged_ = false;
@@ -2169,7 +2270,9 @@ private:
     if (phase_ == CampingSiteManeuverPhase::kRecallReturnWait) {
       message.state = avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT;
       message.state_name = "GUEST_LOADING_WAIT";
-    } else if (recall_turnaround_return_active_ && isSiteInternalPhase()) {
+    } else if ((recall_turnaround_return_active_ || turnaround_area_active_) &&
+               (isSiteInternalPhase() ||
+                phase_ == CampingSiteManeuverPhase::kDone)) {
       // Re-entry is part of an accepted return, not a second delivery/pickup.
       message.state = avg_msgs::msg::AvgServiceState::RETURN_WITH_CARGO;
       message.state_name = "RETURN_WITH_CARGO";
@@ -2446,6 +2549,7 @@ private:
     message.header.stamp = current_time;
     message.site_name = site_goal_key_;
     message.source = returnRequestSource(reason);
+    armTurnaroundAreaLeg(message.source);
     return_request_publisher_->publish(message);
     return_published_ = true;
     last_return_request_publish_time_ = current_time;
@@ -2547,6 +2651,9 @@ private:
           setPhase(CampingSiteManeuverPhase::kRecallReturnWait,
                    "recall turnaround complete; remain stopped for loading; "
                    "second recall_final_return confirmation required");
+        } else if (turnaround_area_active_) {
+          // HJ_261105 - The area is a pure turnaround; nothing is unloaded.
+          beginReturnExit("turnaround area rotation complete");
         } else {
           setPhase(CampingSiteManeuverPhase::kUnloadWait,
                    "robot yaw rotated 180deg");
@@ -2910,6 +3017,13 @@ private:
   std::map<std::string, avg_msgs::msg::AvgPoseStamped> camping_site_goals_;
   std::map<std::string, CampsiteServiceMode> camping_site_service_modes_;
   std::set<std::string> occupied_mission_keys_;
+  // HJ_261105 - Roadside site key -> shared turnaround area key. The area
+  // goal itself lives in camping_site_goals_ with turnaround service mode.
+  std::map<std::string, std::string> turnaround_area_for_site_;
+  std::set<std::string> turnaround_area_keys_;
+  std::string turnaround_area_pending_key_;
+  bool turnaround_area_leg_pending_{false};
+  bool turnaround_area_active_{false};
 
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;

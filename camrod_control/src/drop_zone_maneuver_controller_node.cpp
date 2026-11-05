@@ -31,6 +31,7 @@
 #include "camrod_control/drop_zone_station_pose.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/reverse_parking_axis.hpp"
+#include "camrod_control/safety_hold_paused_timer.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
@@ -208,7 +209,12 @@ public:
     exit_speed_mps_ =
         std::abs(declare_parameter<double>("exit_speed_mps", 0.16));
     exit_timeout_s_ =
-        std::abs(declare_parameter<double>("exit_timeout_s", 30.0));
+        std::abs(declare_parameter<double>("exit_timeout_s", 60.0));
+    // HJ_261105 - Exit/approach timeouts pause during a gate obstacle hold.
+    safety_gate_status_topic_ = declare_parameter<std::string>(
+        "safety_gate_status_topic", "/control/cmd_vel_safety_gate/status");
+    safety_gate_status_max_age_s_ = std::abs(
+        declare_parameter<double>("safety_gate_status_max_age_s", 1.5));
     pose_timeout_s_ =
         std::abs(declare_parameter<double>("pose_timeout_s", 2.0));
     allow_unstamped_pose_fallback_ = declare_parameter<bool>(
@@ -277,6 +283,14 @@ public:
           }
         });
 
+    safety_gate_status_subscription_ =
+        create_subscription<avg_msgs::msg::ModuleState>(
+            safety_gate_status_topic_, 10,
+            [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
+              gate_obstacle_hold_ = camrod_control::gateStatusIndicatesObstacleHold(
+                  message->operating_state, message->message);
+              last_gate_status_time_ = now();
+            });
     vehicle_pose_subscription_ =
         create_subscription<avg_msgs::msg::AvgPoseStamped>(
             vehicle_pose_topic_, 10,
@@ -340,6 +354,7 @@ public:
 
     target_body_yaw_rad_ = configuredParkingBodyYaw();
     phase_start_time_ = now();
+    phase_timer_.restart(phase_start_time_.seconds());
     control_timer_ = create_wall_timer(
         std::chrono::duration<double>(1.0 / control_rate_hz_),
         std::bind(&DropZoneManeuverControllerNode::onTimer, this));
@@ -741,6 +756,7 @@ private:
   void setPhase(const DropZoneManeuverPhase phase, const std::string &detail) {
     phase_ = phase;
     phase_start_time_ = now();
+    phase_timer_.restart(phase_start_time_.seconds());
     yaw_alignment_settling_.reset();
     RCLCPP_INFO(get_logger(), "drop_zone_maneuver_controller %s: %s",
                 phaseName(phase_).c_str(), detail.c_str());
@@ -941,7 +957,7 @@ private:
       setError("pose timeout during exact parking-point approach");
       return;
     }
-    if ((now() - phase_start_time_).seconds() >= parking_approach_timeout_s_) {
+    if (phase_timer_.activeElapsed(now().seconds()) >= parking_approach_timeout_s_) {
       setError("exact parking-point approach timeout: error=" +
                fixed(parking_approach_last_command_.distance_m) + "m");
       return;
@@ -1032,7 +1048,7 @@ private:
           "captured exit target reached; aligning captured lanelet yaw");
       return;
     }
-    if ((now() - phase_start_time_).seconds() >= exit_timeout_s_) {
+    if (phase_timer_.activeElapsed(now().seconds()) >= exit_timeout_s_) {
       publishExitComplete(false);
       setError("drop-zone exit timeout");
       return;
@@ -1071,7 +1087,25 @@ private:
     command_publisher_->publish(command);
   }
 
+  bool gateObstacleHoldActive() const {
+    // A stale gate status never pauses a timeout.
+    return gate_obstacle_hold_ && last_gate_status_time_.nanoseconds() > 0 &&
+           (now() - last_gate_status_time_).seconds() <=
+               safety_gate_status_max_age_s_;
+  }
+
   void onTimer() {
+    if (phase_ == DropZoneManeuverPhase::kExitStraight ||
+        phase_ == DropZoneManeuverPhase::kPositionParkingPoint) {
+      const bool held = gateObstacleHoldActive();
+      phase_timer_.observe(now().seconds(), held);
+      if (held) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "%s timeout paused by safety gate obstacle hold (paused %.0fs)",
+            phaseName(phase_).c_str(), phase_timer_.pausedSeconds());
+      }
+    }
     if (phase_ == DropZoneManeuverPhase::kExitStraight) {
       publishExitCommand();
     } else if (phase_ == DropZoneManeuverPhase::kAlignExitYaw) {
@@ -1246,6 +1280,13 @@ private:
   rclcpp::Time last_lanelet_pose_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_snapped_goal_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time phase_start_time_{0, 0, RCL_ROS_TIME};
+  camrod_control::SafetyHoldPausedTimer phase_timer_;
+  std::string safety_gate_status_topic_;
+  double safety_gate_status_max_age_s_{1.5};
+  bool gate_obstacle_hold_{false};
+  rclcpp::Time last_gate_status_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr
+      safety_gate_status_subscription_;
   double exit_start_x_m_{0.0};
   double exit_start_y_m_{0.0};
   double exit_heading_yaw_rad_{0.0};

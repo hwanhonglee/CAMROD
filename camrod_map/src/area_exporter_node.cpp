@@ -48,6 +48,8 @@ struct DropZone
   std::optional<double> service_y;
   std::optional<double> service_z;
   std::optional<double> service_yaw_deg;
+  // HJ_261105 - Turnaround areas list the campsites whose return detours through them.
+  std::vector<std::string> serves;
 };
 
 std::string toLowerCopy(const std::string & value)
@@ -118,6 +120,20 @@ void populateServicePose(const PrimitiveT & primitive, DropZone & zone)
   zone.service_y = getOptionalDoubleAttribute(primitive, "service_y");
   zone.service_z = getOptionalDoubleAttribute(primitive, "service_z");
   zone.service_yaw_deg = getOptionalDoubleAttribute(primitive, "service_yaw_deg");
+  // HJ_261105 - "serves" is a comma-separated campsite list on turnaround areas.
+  zone.serves.clear();
+  const auto serves = getAttributeCaseInsensitive(primitive, "serves");
+  size_t begin = 0;
+  while (begin <= serves.size()) {
+    const auto end = std::min(serves.find(',', begin), serves.size());
+    auto item = serves.substr(begin, end - begin);
+    item.erase(0, item.find_first_not_of(" \t"));
+    item.erase(item.find_last_not_of(" \t") + 1);
+    if (!item.empty()) {
+      zone.serves.push_back(toLowerCopy(item));
+    }
+    begin = end + 1;
+  }
 }
 
 bool startsWith(const std::string & value, const std::string & prefix)
@@ -369,6 +385,8 @@ public:
       "dropzone_types", std::vector<std::string>{"drop_zone"});
     camping_site_prefixes_ = declare_parameter<std::vector<std::string>>(
       "camping_site_prefixes", std::vector<std::string>{"camping_site_"});
+    turnaround_area_types_ = declare_parameter<std::vector<std::string>>(
+      "turnaround_area_types", std::vector<std::string>{"turnaround_area"});
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
     map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
     if (publish_map_status_) {
@@ -407,11 +425,16 @@ public:
     for (const auto & p : camping_site_prefixes_) {
       camping_prefixes.push_back(toLowerCopy(p));
     }
+    std::unordered_set<std::string> turnaround_types;
+    for (const auto & t : turnaround_area_types_) {
+      turnaround_types.insert(toLowerCopy(t));
+    }
 
     // 2026-03-19: Support both exact semantic types (drop_zone) and prefixed
     // semantics (camping_site_1..n) from lanelet2 type/subtype.
     auto classifySemanticType =
-      [&dropzone_types, &camping_prefixes](const std::string & semantic_type) -> std::string {
+      [&dropzone_types, &camping_prefixes, &turnaround_types](
+        const std::string & semantic_type) -> std::string {
         if (semantic_type.empty()) {
           return "";
         }
@@ -422,6 +445,10 @@ public:
           if (startsWith(semantic_type, prefix)) {
             return "camping_site";
           }
+        }
+        // HJ_261105 - B11-B13 return-turnaround areas export to turnaround_areas.
+        if (turnaround_types.find(semantic_type) != turnaround_types.end()) {
+          return "turnaround_area";
         }
         return "";
       };
@@ -564,13 +591,19 @@ public:
 
     std::vector<DropZone> drop_zones;
     std::vector<DropZone> camping_sites;
+    std::vector<DropZone> turnaround_areas;
     for (const auto & zone : zones) {
       if (zone.type == "drop_zone") {
         drop_zones.push_back(zone);
       } else if (zone.type == "camping_site") {
         camping_sites.push_back(zone);
+      } else if (zone.type == "turnaround_area") {
+        turnaround_areas.push_back(zone);
       }
     }
+    std::sort(
+      turnaround_areas.begin(), turnaround_areas.end(),
+      [](const DropZone & a, const DropZone & b) {return a.id < b.id;});
 
     // HH_260907 - Area-layer iteration is unordered. Stable IDs keep repeated
     // exports deterministic, independent of the map loader's iteration order.
@@ -699,10 +732,48 @@ public:
           }
         }
       }
+      // HJ_261105 - Keep map-authored turnaround areas in the same generated file.
+      if (!turnaround_areas.empty()) {
+        out << "# HJ_261105 - Generated from map turnaround_area areas. Returns from the\n";
+        out << "# served sites crab in at service_x/y, turn 180 deg, and retrace the route;\n";
+        out << "# yaw_deg is the road entry heading.\n";
+        out << "turnaround_areas:\n";
+      }
+      for (const auto & area : turnaround_areas) {
+        out << "  - id: \"" << area.id << "\"\n";
+        out << "    type: \"" << area.semantic_type << "\"\n";
+        out << "    source: \"" << area.source << "\"\n";
+        out << "    x: " << area.x << "\n";
+        out << "    y: " << area.y << "\n";
+        out << "    z: " << area.z << "\n";
+        if (area.service_x.has_value()) {
+          out << "    service_x: " << area.service_x.value() << "\n";
+        }
+        if (area.service_y.has_value()) {
+          out << "    service_y: " << area.service_y.value() << "\n";
+        }
+        out << "    yaw_deg: " << area.yaw_deg << "\n";
+        if (!area.service_mode.empty()) {
+          out << "    service_mode: \"" << area.service_mode << "\"\n";
+        }
+        out << "    serves: [";
+        for (size_t i = 0; i < area.serves.size(); ++i) {
+          out << (i == 0 ? "" : ", ") << "\"" << area.serves[i] << "\"";
+        }
+        out << "]\n";
+        if (!area.corners.empty()) {
+          out << "    corners:\n";
+          for (const auto & c : area.corners) {
+            out << "      - x: " << c.x() << "\n";
+            out << "        y: " << c.y() << "\n";
+            out << "        z: " << c.z() << "\n";
+          }
+        }
+      }
       out.close();
       RCLCPP_INFO(
-        get_logger(), "wrote %zu camping sites to %s", camping_sites.size(),
-        camping_sites_output_yaml_path_.c_str());
+        get_logger(), "wrote %zu camping sites and %zu turnaround areas to %s",
+        camping_sites.size(), turnaround_areas.size(), camping_sites_output_yaml_path_.c_str());
     }
 
     publishStatus(avg_msgs::msg::ModuleState::OK, "drop-zone/camping-site yaml export completed");
@@ -915,6 +986,7 @@ private:
   double default_yaw_deg_{0.0};
   std::vector<std::string> dropzone_types_;
   std::vector<std::string> camping_site_prefixes_;
+  std::vector<std::string> turnaround_area_types_;
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;

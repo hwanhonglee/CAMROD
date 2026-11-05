@@ -222,3 +222,121 @@ test.each(['delivery', 'recall'])('actual App allows existing %s selection after
   expect(sockets[0].send).not.toHaveBeenCalled();
   expect(posts()).toHaveLength(0);
 });
+
+// HJ_261105 - Standby chooses the charging screen from the backend charging contact, not the service-state name.
+async function bootApp(serviceState, serviceStateName, next) {
+  liveStatus = next;
+  await act(async () => root.render(<App />));
+  await act(async () => {
+    sockets[0].onopen();
+    sockets[0].onmessage({ data: JSON.stringify({ states: {}, mission_dispatch_active: false,
+      mission_dispatch_generation: 0, service_state: serviceState, service_state_name: serviceStateName,
+      system_health: 'OK', mission_phase: 'READY', battery: 80 }) });
+  });
+  await poll(next);
+}
+const backToStandby = async () => {
+  const back = [...host.querySelectorAll('button')].find(b => /(대기|충전) 화면으로/.test(b.textContent));
+  await tap(back);
+};
+const stoppedFrame = () => act(async () => sockets[0].onmessage({ data: JSON.stringify({
+  service_state: 16, service_state_name: 'OPERATOR_STOPPED' }) }));
+
+test('charging-screen Stop keeps cargo access while the robot stays on the charger', async () => {
+  await bootApp(13, 'CHARGING', status({ battery_percentage: 80 }));
+  fetch.mockImplementation(async url => response(url === '/api/charging-access' ? liveStatus : { success: true }));
+  await tap(button('charging-safety-stop'));
+  await tap(button('charging-confirm-stop'));
+  await stoppedFrame();
+  await poll(status({ battery_percentage: 80 }));
+  expect(button('charging-screen')).not.toBeNull();
+  expect(button('charging-access-leave').disabled).toBe(false);
+  expect(button('operator-waiting-screen')).toBeNull();
+});
+
+test('OPERATOR_STOPPED during service selection returns to cargo access while charging', async () => {
+  await bootApp(13, 'CHARGING', status({ battery_percentage: 80 }));
+  await tap(button('charging-open-services'));
+  await tap(button('usage-safety-confirm'));
+  await stoppedFrame();
+  expect(button('operator-service-selection-screen')).not.toBeNull();
+  await backToStandby();
+  expect(button('charging-screen')).not.toBeNull();
+  expect(sockets[0].send).not.toHaveBeenCalled();
+  expect(posts()).toHaveLength(0);
+});
+
+test('after the staging move leaves the charger, a stop shows ordinary standby (no cargo screen)', async () => {
+  await bootApp(0, 'DROP_ZONE_WAIT', status({ phase: 'ready', cargo_access_ready: true,
+    can_leave: false, platform_is_charging: false, battery_percentage: 80 }));
+  expect(button('charging-screen')).not.toBeNull();
+  await stoppedFrame();
+  await poll(status({ phase: 'inactive', can_leave: false, platform_is_charging: false, battery_percentage: 80 }));
+  expect(button('charging-screen')).toBeNull();
+  expect(button('operator-waiting-screen')).not.toBeNull();
+});
+
+// HJ_261105 - The measured stop is a short loading cue; ordinary standby owns destination selection after it.
+const readyStatus = (overrides = {}) => status({ phase: 'ready', cargo_access_ready: true, can_leave: false,
+  platform_is_charging: false, battery_percentage: 80, ...overrides });
+const backButtonText = () => [...host.querySelectorAll('button')]
+  .find(b => /(대기|충전) 화면으로/.test(b.textContent))?.textContent.trim();
+const advance = ms => act(async () => jest.advanceTimersByTime(ms));
+
+test('measured stop shows the loading cue for 3 s, then ordinary standby', async () => {
+  await bootApp(0, 'DROP_ZONE_WAIT', readyStatus());
+  expect(button('charging-screen').dataset.phase).toBe('ready');
+  expect(button('charging-access-message').textContent).toBe('로봇에 짐을 실어주세요.');
+  await advance(1500);
+  expect(button('charging-screen')).not.toBeNull();
+  await advance(1600);
+  expect(button('charging-screen')).toBeNull();
+  expect(button('operator-waiting-screen')).not.toBeNull();
+  await tap(button('operator-open-destination'));
+  await tap(button('usage-safety-confirm'));
+  expect(backButtonText()).toBe('← 대기 화면으로');
+  await backToStandby();
+  expect(button('operator-waiting-screen')).not.toBeNull();
+  expect(posts()).toHaveLength(0);
+});
+
+test('an unconfirmed stop keeps the charging screen; the 3 s cue starts only once stop is measured', async () => {
+  await bootApp(0, 'DROP_ZONE_WAIT', readyStatus({ cargo_access_ready: false }));
+  await advance(10000);
+  expect(button('charging-screen')).not.toBeNull();
+  expect(host.textContent).toContain('정차 상태 확인 중');
+  await poll(readyStatus());
+  await advance(1500);
+  expect(button('charging-screen')).not.toBeNull();
+  // A lost measurement during the cue restarts it from zero once regained.
+  await poll(readyStatus({ cargo_access_ready: false }));
+  await poll(readyStatus());
+  await advance(2500);
+  expect(button('charging-screen')).not.toBeNull();
+  await advance(1000);
+  expect(button('charging-screen')).toBeNull();
+  expect(button('operator-waiting-screen')).not.toBeNull();
+});
+
+test('during the cue the back button names the charging screen and returns there', async () => {
+  await bootApp(0, 'DROP_ZONE_WAIT', readyStatus());
+  await tap(button('charging-open-services'));
+  await tap(button('usage-safety-confirm'));
+  expect(backButtonText()).toBe('← 충전 화면으로');
+  await backToStandby();
+  expect(button('charging-screen')).not.toBeNull();
+});
+
+test('while charging the back button reads "충전 화면으로"; without charging it reads "대기 화면으로"', async () => {
+  await bootApp(13, 'CHARGING', status({ battery_percentage: 80 }));
+  await tap(button('charging-open-services'));
+  await tap(button('usage-safety-confirm'));
+  expect(backButtonText()).toBe('← 충전 화면으로');
+  await act(async () => root.unmount());
+  root = createRoot(host); sockets = [];
+  await bootApp(0, 'DROP_ZONE_WAIT', status({ platform_is_charging: false, can_leave: false, battery_percentage: 80 }));
+  expect(button('operator-waiting-screen')).not.toBeNull();
+  await tap(button('operator-open-destination'));
+  await tap(button('usage-safety-confirm'));
+  expect(backButtonText()).toBe('← 대기 화면으로');
+});

@@ -177,6 +177,12 @@ straight reverse parking or AprilTag docking. Missing, stale-mission, wrong-
 frame, non-finite, or out-of-envelope targets fail closed for automatic
 parking. Radar/fusion obstacle checks remain active throughout this phase.
 
+During AprilTag `TAG_GUIDED_REVERSE`, a reverse command checks the rear and
+both body-near sides without retaining a forward-path obstacle hold. The
+saved front hold is released only after fresh trigger evidence and the current
+motion checks pass. Side/rear holds, final yaw rotation checks, and forward
+retry/exit checks retain their existing behavior.
+
 For B1-B10, including Site 7, `ALIGN_RETRACE_YAW` after `ROTATE_180` is also a
 required handoff. If yaw is already within `4 deg`, the robot commands zero
 while proving the configured `0.8 s` low-yaw-rate settle; status now reports

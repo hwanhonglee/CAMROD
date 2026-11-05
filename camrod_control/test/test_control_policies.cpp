@@ -2517,6 +2517,96 @@ TEST(MotionCostStop,
   }
 }
 
+TEST(MotionCostStop, TagGuidedReverseRechecksRearAndSidesBeforeDroppingFrontLatch) {
+  for (const std::string source : {"radar", "fusion"}) {
+    for (const auto & hit : std::vector<std::pair<double, double>>{
+           {1.8, 0.0}, {0.0, 0.8}, {0.0, -0.8}, {-0.5, 0.0}}) {
+      SCOPED_TRACE(source);
+      SCOPED_TRACE(::testing::Message() << hit.first << "," << hit.second);
+      auto config = baseCostConfig();
+      config.latch_enabled = true;
+      config.body_near_enabled = true;
+      config.radar_grid_freshness_stop_enabled = true;
+      auto cost_stop = makeMotionCostStop(config);
+      auto front = makeGrid({{1.8, 0.0, 95}});
+      front.header.stamp.sec = 10;
+      auto clear = makeGrid();
+      clear.header.stamp.sec = 10;
+      cost_stop.setMergedGrid(front, 10.0);
+      cost_stop.setSourceGrid("radar", clear, 10.0);
+      cost_stop.setSourceGrid(source, front, 10.0);
+      if (source == "fusion") {
+        cost_stop.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
+      }
+      ASSERT_TRUE(cost_stop.evaluate(command(0.2), 10.0).blocked);
+      ASSERT_TRUE(cost_stop.latched());
+
+      auto current = makeGrid({{1.8, 0.0, 95}, {hit.first, hit.second, 95}});
+      current.header.stamp.sec = 11;
+      cost_stop.setMergedGrid(current, 11.0);
+      cost_stop.setSourceGrid("radar", current, 11.0);
+      cost_stop.setSourceGrid(source, current, 11.0);
+      cost_stop.setManeuverPhases("", "", "TAG_GUIDED_REVERSE");
+      const auto decision = cost_stop.evaluate(command(-0.1, 0.0, 0.02), 11.0);
+      const bool front_only = hit.first > 0.0;
+      EXPECT_EQ(decision.blocked, !front_only) << decision.reason;
+      EXPECT_EQ(cost_stop.latched(), !front_only);
+      if (front_only) {
+        EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 0.0);
+        // A later forward command must immediately check the front again.
+        EXPECT_TRUE(cost_stop.evaluate(command(0.1), 11.0).blocked);
+      }
+    }
+  }
+}
+
+TEST(MotionCostStop, TagGuidedReverseExceptionDoesNotReleaseOtherLatchesOrStaleEvidence) {
+  for (const auto & trigger : std::vector<avg_msgs::msg::AvgTwist>{
+         command(0.2), command(-0.2), command(0.0, 0.2), command(0.0, 0.0, 0.2)}) {
+    for (const std::string phase : {"TAG_GUIDED_REVERSE", "REVERSE_APPROACH",
+           "FINAL_YAW_ALIGNMENT", "RETRY_FORWARD_EXIT", "IDLE"}) {
+      auto config = baseCostConfig();
+      config.latch_enabled = true;
+      config.body_near_enabled = true;
+      auto cost_stop = makeMotionCostStop(config);
+      const auto occupied = makeGrid({{1.8, 0.0, 95}, {-0.5, 0.0, 95}, {0.0, 0.8, 95}});
+      cost_stop.setMergedGrid(occupied, 0.0);
+      cost_stop.setSourceGrid("radar", occupied, 0.0);
+      ASSERT_TRUE(cost_stop.evaluate(trigger, 0.0).blocked);
+      cost_stop.setManeuverPhases("", "", phase);
+      // The trigger evidence is stale; even the front exception must fail closed.
+      EXPECT_TRUE(cost_stop.evaluate(command(-0.1), 2.0).blocked);
+      cost_stop.setMergedGrid(occupied, 2.1);
+      cost_stop.setSourceGrid("radar", occupied, 2.1);
+      // Fresh rear/side occupancy must still stop every docking reverse.
+      EXPECT_TRUE(cost_stop.evaluate(command(-0.1), 2.1).blocked);
+    }
+  }
+}
+
+TEST(MotionCostStop, DockingFrontLatchExceptionRequiresTagGuidedReverseCommand) {
+  for (const std::string phase : {"TAG_GUIDED_REVERSE", "REVERSE_APPROACH",
+         "FINAL_YAW_ALIGNMENT", "RETRY_FORWARD_EXIT", "IDLE"}) {
+    for (const auto & next : std::vector<avg_msgs::msg::AvgTwist>{
+           command(-0.1), command(0.1), command(0.0), command(0.0, 0.0, 0.1),
+           command(-0.1, 0.1)}) {
+      auto config = baseCostConfig();
+      config.latch_enabled = true;
+      auto cost_stop = makeMotionCostStop(config);
+      const auto occupied = makeGrid({{1.8, 0.0, 95}});
+      cost_stop.setMergedGrid(occupied, 0.0);
+      cost_stop.setSourceGrid("radar", occupied, 0.0);
+      ASSERT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+      cost_stop.setMergedGrid(occupied, 0.1);
+      cost_stop.setSourceGrid("radar", occupied, 0.1);
+      cost_stop.setManeuverPhases("", "", phase);
+      const bool allowed = phase == "TAG_GUIDED_REVERSE" && next.linear.x < 0.0 &&
+        next.linear.y == 0.0;
+      EXPECT_EQ(cost_stop.evaluate(next, 0.1).blocked, !allowed);
+    }
+  }
+}
+
 TEST(MotionCostStop, StaleTriggerSourceCannotProveLatchClear) {
   auto config = baseCostConfig();
   config.require_dynamic_source = true;

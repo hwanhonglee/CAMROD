@@ -50,7 +50,10 @@ function normalizeArea(raw) {
     && raw.id === `camping_site_${raw.site.slice(1)}`;
   const drop = raw.kind === 'drop_zone' && raw.source === 'drop_zones_yaml'
     && raw.site == null;
-  if (!camping && !drop) return null;
+  // HJ_261105 - B11-B13 return turnaround area ("회차구간"); never a destination.
+  const turnaround = raw.kind === 'turnaround_area' && raw.source === 'camping_sites_yaml'
+    && raw.site == null;
+  if (!camping && !drop && !turnaround) return null;
   // HH_261002 - Reject crossed or degenerate rings instead of drawing a
   // plausible-looking but false site footprint.
   for (let first = 0; first < points.length; first += 1) {

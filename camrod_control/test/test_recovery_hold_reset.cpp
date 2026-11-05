@@ -1,6 +1,7 @@
 // HH_261024 - Reset is a stop-only administrative action, not permission to
 // drive through an obstacle or to erase a physical/planning emergency stop.
 #include <limits>
+#include <thread>
 #include "gtest/gtest.h"
 #define CAMROD_CONTROL_RECOVERY_RESET_TEST
 #include "../src/cmd_vel_safety_gate_node.cpp"
@@ -149,8 +150,141 @@ protected:
       node_->motion_cost_stop_.setMergedGrid(grid, node_->nowSec() - 2.0);
   }
   bool obstacleLatched() const { return node_->motion_cost_stop_.latched(); }
+  void prepareDockingGate() {
+    auto config = node_->motion_cost_stop_config_;
+    config.lanelet_enabled = false;
+    config.dynamic_front_use_local_path = false;
+    config.radar_grid_freshness_stop_enabled = true;
+    node_->motion_cost_stop_.setConfig(config);
+    node_->motion_cost_stop_.setPose({0,0,0,"map","test",node_->nowSec()});
+    node_->enable_resume_after_hold_voice_gate_ = false;
+    node_->enable_route_heading_alignment_ = false;
+    node_->gate_policy_.setMissionEngage(true);
+    node_->gate_policy_.setPlatformDriveEnable(true);
+    reader_ = std::make_shared<rclcpp::Node>("docking_gate_test_reader");
+    output_subscription_ = reader_->create_subscription<avg_msgs::msg::AvgTwist>(
+        node_->output_topic_, 10, [this](avg_msgs::msg::AvgTwist::SharedPtr msg) {
+          output_ = *msg;
+        });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (node_->command_publisher_->get_subscription_count() == 0 &&
+           std::chrono::steady_clock::now() < deadline) {
+      rclcpp::spin_some(reader_);
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ASSERT_GT(node_->command_publisher_->get_subscription_count(), 0U);
+  }
+  void dockingGrid(const double x = 1.8, const double y = 0.0,
+                   const bool stale_radar = false) {
+    avg_msgs::msg::AvgOccupancyGrid grid;
+    grid.header.frame_id = "map";
+    grid.header.stamp = node_->now();
+    grid.info.resolution = 0.1;
+    grid.info.width = grid.info.height = 100;
+    grid.info.origin.position.x = grid.info.origin.position.y = -5.0;
+    grid.info.origin.orientation.w = 1.0;
+    grid.data.assign(10000, 0);
+    grid.data[50 * 100 + 68] = 95;  // Front path stays occupied.
+    grid.data[static_cast<int>((y + 5.0) / 0.1) * 100 +
+              static_cast<int>((x + 5.0) / 0.1)] = 95;
+    node_->motion_cost_stop_.setMergedGrid(grid, node_->nowSec());
+    if (stale_radar) grid.header.stamp.sec -= 2;
+    node_->motion_cost_stop_.setSourceGrid("radar", grid,
+        node_->nowSec() - (stale_radar ? 2.0 : 0.0));
+    freshPlatform();
+  }
+  void dockingPhase(const std::string & phase) {
+    node_->parking_phase_ = phase;
+    node_->updateManeuverPhases();
+  }
+  void resetDockingCost() {
+    node_->motion_cost_stop_ = MotionCostStop(node_->motion_cost_stop_.config());
+    node_->motion_cost_stop_.setPose({0,0,0,"map","test",node_->nowSec()});
+  }
+  avg_msgs::msg::AvgTwist sendDockingCommand(const double x, const double yaw = 0) {
+    // Ownership transitions also publish zero. Consume those older outputs
+    // before checking the response to this specific command.
+    EXPECT_TRUE(node_->command_publisher_->wait_for_all_acked(std::chrono::seconds(2)));
+    rclcpp::executors::SingleThreadedExecutor executor;
+    executor.add_node(reader_);
+    executor.spin_all(std::chrono::milliseconds(20));
+    output_.reset();
+    avg_msgs::msg::AvgTwist cmd;
+    cmd.linear.x = x; cmd.angular.z = yaw;
+    node_->onCommand(cmd, false);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!output_ && std::chrono::steady_clock::now() < deadline) {
+      executor.spin_some();
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    EXPECT_TRUE(output_.has_value());
+    return output_.value_or(avg_msgs::msg::AvgTwist{});
+  }
+  std::shared_ptr<rclcpp::Node> reader_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwist>::SharedPtr output_subscription_;
+  std::optional<avg_msgs::msg::AvgTwist> output_;
   std::shared_ptr<CmdVelSafetyGateNode> node_;
 };
+
+TEST_F(CmdVelSafetyGateRecoveryResetTest, DockingReversePublishesThroughGateAfterFrontHold) {
+  prepareDockingGate();
+  dockingGrid();
+  EXPECT_DOUBLE_EQ(sendDockingCommand(0.2).linear.x, 0.0);
+  ASSERT_TRUE(obstacleLatched());
+  dockingPhase("TAG_GUIDED_REVERSE");
+  dockingGrid();
+  EXPECT_LT(sendDockingCommand(-0.1, 0.02).linear.x, 0.0);
+  EXPECT_FALSE(obstacleLatched());
+  dockingGrid();
+  EXPECT_DOUBLE_EQ(sendDockingCommand(0.1).linear.x, 0.0);
+  EXPECT_TRUE(obstacleLatched());
+}
+
+TEST_F(CmdVelSafetyGateRecoveryResetTest, DockingReverseKeepsSideRearAndStaleRadarStops) {
+  prepareDockingGate();
+  dockingPhase("TAG_GUIDED_REVERSE");
+  for (const auto & hit : std::vector<std::pair<double, double>>{
+         {0.0, 0.8}, {0.0, -0.8}, {-0.5, 0.0}}) {
+    resetDockingCost();
+    dockingPhase("TAG_GUIDED_REVERSE");
+    dockingGrid(hit.first, hit.second);
+    EXPECT_DOUBLE_EQ(sendDockingCommand(-0.1).linear.x, 0.0);
+    EXPECT_TRUE(obstacleLatched());
+  }
+  // A stale radar cannot release an existing front hold.
+  resetDockingCost();
+  dockingGrid();
+  sendDockingCommand(0.2);
+  ASSERT_TRUE(obstacleLatched());
+  dockingGrid(1.8, 0.0, true);
+  dockingPhase("TAG_GUIDED_REVERSE");
+  EXPECT_DOUBLE_EQ(sendDockingCommand(-0.1).linear.x, 0.0);
+  EXPECT_TRUE(obstacleLatched());
+}
+
+TEST_F(CmdVelSafetyGateRecoveryResetTest, DockingReverseCannotOverrideEmergencyStop) {
+  prepareDockingGate();
+  dockingGrid();
+  sendDockingCommand(0.2);
+  ASSERT_TRUE(obstacleLatched());
+  dockingPhase("TAG_GUIDED_REVERSE");
+  dockingGrid(); hardStop();
+  EXPECT_DOUBLE_EQ(sendDockingCommand(-0.1).linear.x, 0.0);
+  EXPECT_TRUE(hardStopActive());
+}
+
+TEST_F(CmdVelSafetyGateRecoveryResetTest, FinalYawStillStopsForFrontObstacle) {
+  prepareDockingGate();
+  dockingPhase("TAG_GUIDED_REVERSE");
+  dockingGrid(1.1, 0.0);
+  EXPECT_LT(sendDockingCommand(-0.1).linear.x, 0.0);
+  dockingPhase("FINAL_YAW_ALIGNMENT");
+  dockingGrid(1.1, 0.0);
+  const auto output = sendDockingCommand(0.0, 0.1);
+  EXPECT_DOUBLE_EQ(output.linear.x, 0.0);
+  EXPECT_DOUBLE_EQ(output.angular.z, 0.0);
+  EXPECT_TRUE(obstacleLatched());
+}
 
 TEST_F(CmdVelSafetyGateRecoveryResetTest, ClearsSoftwareEpisodeWithoutEnablingMotion) {
   seedRouteHold();

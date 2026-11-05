@@ -20,8 +20,8 @@ if(${ENABLE_TRANSFORM})
   add_definitions("-DENABLE_TRANSFORM")
 endif(${ENABLE_TRANSFORM})
 
-set(vanjee_driver_INCLUDE_DIRS "/home/nvidia/camrod_ws/src/camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/src;/usr/local/vanjee_lidar_sdk/include")
-set(VANJEE_DRIVER_INCLUDE_DIRS "/home/nvidia/camrod_ws/src/camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/src;/usr/local/vanjee_lidar_sdk/include")
+set(vanjee_driver_INCLUDE_DIRS "/home/avg/Workspace/camrod_ws/src/camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/src;/usr/local/vanjee_lidar_sdk/include")
+set(VANJEE_DRIVER_INCLUDE_DIRS "/home/avg/Workspace/camrod_ws/src/camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/src;/usr/local/vanjee_lidar_sdk/include")
 
 set(vanjee_driver_LIBRARIES "pthread")
 set(VANJEE_DRIVER_LIBRARIES "pthread")

@@ -41,7 +41,8 @@ export function createNavigationAreaVisuals(areas, origin, isDestination, dark =
   });
   batches.forEach((batch, key) => {
     const color = key === 'destination' ? '#159bd6' : key === 'drop_zone'
-      ? (dark ? '#e8b65d' : '#b27a27') : (dark ? '#74c8a9' : '#449778');
+      ? (dark ? '#e8b65d' : '#b27a27') : key === 'turnaround_area'
+        ? (dark ? '#b7a4ee' : '#7559b8') : (dark ? '#74c8a9' : '#449778');
     [[batch.fills, batch.selected ? 0.32 : 0.20], [batch.outlines, 0.9]].forEach(([positions, opacity]) => {
       if (!positions.length) return;
       const geometry = new THREE.BufferGeometry();

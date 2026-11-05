@@ -922,9 +922,10 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
   }); } catch (failure) { error = failure.message; }
   const reverse = parkingPolicyMessage({parking_policy_mode: 'auto', parking_selected_method: 'reverse'});
   const april = parkingPolicyMessage({parking_policy_mode: 'auto', parking_selected_method: 'apriltag'});
-  const stationAllowed = ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
+  const stationAllowed = ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING']
     .map(dockingAllowedAtServiceState);
-  const awayBlocked = ['', 'PREPARING', 'OPERATOR_STOPPED', 'GOING_TO_SITE', 'GUEST_LOADING_WAIT', 'RETURN_WITH_CARGO']
+  // HJ_261105 - Already charging: the backend would only answer already_charging.
+  const awayBlocked = ['', 'PREPARING', 'OPERATOR_STOPPED', 'GOING_TO_SITE', 'GUEST_LOADING_WAIT', 'RETURN_WITH_CARGO', 'CHARGING']
     .map(dockingAllowedAtServiceState);
   process.stdout.write(JSON.stringify({calls, accepted, error, reverse, april, stationAllowed, awayBlocked}));
 })();
@@ -937,8 +938,8 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         self.assertIn("충전하지 않음", output["reverse"])
         # Pending/completed docking copy belongs to the lifecycle, not policy selection.
         self.assertEqual(output["april"], "")
-        self.assertEqual(output["stationAllowed"], [True] * 4)
-        self.assertEqual(output["awayBlocked"], [False] * 6)
+        self.assertEqual(output["stationAllowed"], [True] * 3)
+        self.assertEqual(output["awayBlocked"], [False] * 7)
         # Explicit docking is offered in the service menu, and once in diagnostics.
         self.assertEqual(self.source.count("<DockingCommandButton"), 1)
         self.assertIn("<DockingCommandButton", self.telemetry_source)

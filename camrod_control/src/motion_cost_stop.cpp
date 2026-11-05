@@ -181,10 +181,21 @@ MotionCostStopDecision MotionCostStop::evaluate(
     return {};
   }
 
+  // Tag-guided reverse already checks rear and both body-near sides below.
+  // A saved forward-path stop must not prevent this specific docking motion.
+  // Keep the saved stop until fresh evidence and all current checks pass;
+  // side/rear and rotation latches retain their ordinary release policy.
+  const bool docking_front_latch =
+    parking_phase_ == "tag_guided_reverse" && command.linear.x < 0.0 &&
+    command.linear.y == 0.0 && latch_active_ && latch_context_.has_value() &&
+    latch_context_->corridor.label == "FRONT" &&
+    latch_context_->probe_kind != LatchProbeKind::kRotation &&
+    latchEvidenceFresh(*latch_context_, now_sec);
+
   // HH_260728 - A stop is released only by fresh clear evidence for the exact
   // source and geometry that triggered it. The new command cannot substitute
   // a zero/rotation corridor for the original front/side/rear hazard.
-  if (latch_active_) {
+  if (latch_active_ && !docking_front_latch) {
     const auto latch_decision = evaluateLatchedHazard(now_sec);
     if (latch_decision.blocked) {
       return latch_decision;
@@ -259,6 +270,10 @@ MotionCostStopDecision MotionCostStop::evaluate(
   // HH_261102 - Preserve ordinary radar/lanelet authority even when the directional raw guard also sees a hit.
   if (front_guard_decision.blocked) {
     return front_guard_decision;
+  }
+  if (docking_front_latch) {
+    clearLatch();
+    hold_until_sec_ = 0.0;
   }
   return evaluateLatch(now_sec);
 }

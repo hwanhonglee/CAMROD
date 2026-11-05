@@ -1397,6 +1397,9 @@ class UiBackendNode(Node):
         # controller topics.  Admission remains closed until cancel-all has
         # completed after discovery and every service writer has been stopped.
         self._startup_recovery_pending = True
+        # HJ_261105 - A robot launched on the charger has no later charging edge, so
+        # decide once after recovery whether the stop placeholder is really CHARGING.
+        self._startup_charging_restore_pending = True
         self._startup_fail_closed_attempts = 0
         self._startup_nav2_cancel_futures: Dict[str, Any] = {}
         self._startup_nav2_cancel_completed: Set[str] = set()
@@ -1821,9 +1824,11 @@ class UiBackendNode(Node):
     def _load_driving_map_areas(self) -> List[Dict[str, Any]]:
         """HH_261002 - Read bounded authored polygons, not inferred marker labels."""
         records = []
-        for parameter, catalog_key, kind in (
-            ("camping_sites_yaml", "camping_sites", "camping_site"),
-            ("drop_zones_yaml", "drop_zones", "drop_zone"),
+        for parameter, catalogs in (
+            # HJ_261105 - B11-B13 return turnaround area, shown as "회차구간".
+            ("camping_sites_yaml", (("camping_sites", "camping_site"),
+                                    ("turnaround_areas", "turnaround_area"))),
+            ("drop_zones_yaml", (("drop_zones", "drop_zone"),)),
         ):
             yaml_path = str(getattr(self, parameter, "") or "").strip()
             if not yaml_path:
@@ -1836,36 +1841,46 @@ class UiBackendNode(Node):
                 if len(text) > 2 * 1024 * 1024:
                     raise ValueError("map area catalog exceeds 2 MiB")
                 data = yaml.safe_load(text)
-                entries = data.get(catalog_key) if isinstance(data, dict) else None
-                if not isinstance(entries, list) or len(entries) > MAP_AREA_MAX_COUNT:
-                    raise ValueError("map area catalog must contain a bounded list")
-                for entry in entries:
-                    if not isinstance(entry, dict):
+                for catalog_key, kind in catalogs:
+                    entries = data.get(catalog_key) if isinstance(data, dict) else None
+                    if kind == "turnaround_area" and entries is None:
+                        # Optional catalog; older site files have no turnaround areas.
                         continue
-                    semantic = str(entry.get("type", ""))
-                    if kind == "camping_site":
-                        labels = {f"camping_site_{index}": f"B{index}" for index in range(1, 14)}
-                        if semantic not in labels:
+                    if not isinstance(entries, list) or len(entries) > MAP_AREA_MAX_COUNT:
+                        raise ValueError("map area catalog must contain a bounded list")
+                    for entry in entries:
+                        if not isinstance(entry, dict):
                             continue
-                        identity, site = semantic, labels[semantic]
-                    else:
-                        if semantic != "drop_zone":
+                        semantic = str(entry.get("type", ""))
+                        if kind == "camping_site":
+                            labels = {f"camping_site_{index}": f"B{index}" for index in range(1, 14)}
+                            if semantic not in labels:
+                                continue
+                            identity, site = semantic, labels[semantic]
+                        elif kind == "turnaround_area":
+                            if semantic != "turnaround_area":
+                                continue
+                            identity, site = str(entry.get("id", "")).strip(), None
+                            if not identity:
+                                continue
+                        else:
+                            if semantic != "drop_zone":
+                                continue
+                            identity, site = str(entry.get("id", "")).strip(), None
+                            if not identity:
+                                # No invented identity or rectangle for an unlabelled station.
+                                continue
+                        corners = entry.get("corners")
+                        if (not isinstance(corners, list)
+                                or not 3 <= len(corners) <= MAP_AREA_MAX_VERTICES + 1
+                                or any(not isinstance(corner, dict) for corner in corners)):
                             continue
-                        identity, site = str(entry.get("id", "")).strip(), None
-                        if not identity:
-                            # No invented identity or rectangle for an unlabelled station.
-                            continue
-                    corners = entry.get("corners")
-                    if (not isinstance(corners, list)
-                            or not 3 <= len(corners) <= MAP_AREA_MAX_VERTICES + 1
-                            or any(not isinstance(corner, dict) for corner in corners)):
-                        continue
-                    records.append({
-                        "id": identity, "kind": kind, "site": site,
-                        "frame_id": str(entry.get("frame_id", self.default_goal_frame_id)),
-                        "points": [[corner.get("x"), corner.get("y")] for corner in corners],
-                        "source": parameter,
-                    })
+                        records.append({
+                            "id": identity, "kind": kind, "site": site,
+                            "frame_id": str(entry.get("frame_id", self.default_goal_frame_id)),
+                            "points": [[corner.get("x"), corner.get("y")] for corner in corners],
+                            "source": parameter,
+                        })
             except (OSError, ValueError, TypeError, RecursionError, yaml.YAMLError) as exc:
                 self.get_logger().warning(f"Driving display map catalog unavailable ({parameter}): {exc}")
         return records
@@ -4681,6 +4696,8 @@ class UiBackendNode(Node):
                     source=f"{redock_source}:can_restored",
                     generation=redock_generation,
                 )
+        # HJ_261105 - Feedback that arrives only after the startup barrier still restores CHARGING once.
+        UiBackendNode._restore_startup_charging_state(self, "platform_status")
         battery_fraction = float(msg.battery_percentage)
         # An unavailable sample must revoke admission, not retain a previous
         # 80% indefinitely. Unknown SOC never initiates a speculative return.
@@ -7635,6 +7652,9 @@ class UiBackendNode(Node):
                 self._schedule_broadcast(
                     {"backend_startup_recovery": False}
                 )
+                UiBackendNode._restore_startup_charging_state(
+                    self, "backend_startup_recovery_complete"
+                )
         if not complete:
             return
         self._startup_fail_closed_timer = None
@@ -7643,6 +7663,56 @@ class UiBackendNode(Node):
             destroy_timer = getattr(self, "destroy_timer", None)
             if callable(destroy_timer):
                 destroy_timer(timer)
+
+    def _restore_startup_charging_state(self, source: str) -> None:
+        """HJ_261105 - Replace the startup stop placeholder with the parked state.
+
+        The charging edge that normally publishes CHARGING happens while the
+        startup barrier is still re-publishing OPERATOR_STOPPED, and a robot
+        that stays on the charger never produces another edge.  Likewise a
+        robot launched uncharged inside drop_zone has no event that would ever
+        publish DROP_ZONE_WAIT.  After the barrier retires, fresh platform
+        feedback (and, when not charging, fresh map localization) decides once.
+        Only a stationary display/admission state changes; no motion owner is
+        armed.
+        """
+        dispatch_lock = getattr(self, "_destination_dispatch_lock", None)
+        if dispatch_lock is None:
+            return UiBackendNode._restore_startup_charging_state_serialized(self, source)
+        with dispatch_lock:
+            return UiBackendNode._restore_startup_charging_state_serialized(self, source)
+
+    def _restore_startup_charging_state_serialized(self, source: str) -> None:
+        if not bool(getattr(self, "_startup_charging_restore_pending", False)):
+            return
+        if UiBackendNode._startup_recovery_block(self):
+            return
+        # Any mission, cargo move, or other state owner ends the startup-only window.
+        if (getattr(self, "_active_mission_site", "")
+                or getattr(self, "_charging_access_phase", "inactive") != "inactive"
+                or getattr(self, "_latest_service_state", None) != int(AvgServiceState.OPERATOR_STOPPED)):
+            self._startup_charging_restore_pending = False
+            return
+        # Wait for fresh chassis feedback instead of trusting a cached sample.
+        if not UiBackendNode._charging_access_platform_fresh(self):
+            return
+        if bool(getattr(self, "_latest_platform_is_charging", False)):
+            self._startup_charging_restore_pending = False
+            self._publish_service_state(
+                AvgServiceState.CHARGING,
+                source=f"{source}:startup_charging_restored",
+            )
+            return
+        # Uncharged: only fresh map localization inside drop_zone proves parked standby.
+        inside, _reason = UiBackendNode._station_departure_origin(self)
+        if inside is None:
+            return  # pose not yet known; retry on the next platform sample
+        self._startup_charging_restore_pending = False
+        if inside is True:
+            self._publish_service_state(
+                AvgServiceState.DROP_ZONE_WAIT,
+                source=f"{source}:startup_drop_zone_restored",
+            )
 
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         # HH_261024 - Concurrent policy echoes cannot re-arm during reset.

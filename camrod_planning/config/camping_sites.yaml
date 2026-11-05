@@ -274,3 +274,31 @@ camping_sites:
       - x: 0.152961
         y: 22.8878
         z: 0
+# HJ_261105 - Generated from map turnaround_area areas. Returns from the
+# served sites crab in at service_x/y, turn 180 deg, and retrace the route;
+# yaw_deg is the road entry heading.
+turnaround_areas:
+  - id: "dz_area_7168"
+    type: "turnaround_area"
+    source: "area"
+    x: 23.604
+    y: -14.1597
+    z: 0
+    service_x: 23.843
+    service_y: -14.215
+    yaw_deg: -51.2
+    service_mode: "turnaround"
+    serves: ["camping_site_11", "camping_site_12", "camping_site_13"]
+    corners:
+      - x: 20.6041
+        y: -13.4464
+        z: 0
+      - x: 23.3091
+        y: -11.3163
+        z: 0
+      - x: 26.4466
+        y: -15.1393
+        z: 0
+      - x: 24.2998
+        y: -16.9635
+        z: 0

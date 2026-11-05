@@ -65,6 +65,12 @@
     enable_resume_after_hold_voice_gate: true
     resume_after_hold_voice_key: "safety.thankyou"
     resume_after_hold_voice_timeout_s: 3.0
+    # HJ_261105 - After an obstacle/cost stop releases, cap translation for
+    # this window, counted from the first moving command. Rotation in
+    # place is not limited; curvature is preserved while capped.
+    resume_speed_limit_enable: true
+    resume_speed_limit_duration_s: 4.0
+    resume_speed_limit_max_mps: 0.2
     voice_state_topic: "/voice/voice_announcer/state"
 
     # =========================================================================

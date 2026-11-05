@@ -21,6 +21,18 @@ test('actual authored open rings retain metre corners and polygon centroids', ()
   expect(closed.points).toHaveLength(4);
 });
 
+test('turnaround area renders as 회차구간 and is never a destination', () => {
+  // HJ_261105 - B11-B13 return turnaround area from camping_sites.yaml.
+  const turnaround = { id: 'dz_area_7168', label: '회차구간', kind: 'turnaround_area',
+    site: null, source: 'camping_sites_yaml', points: [[0, 0], [2, 0], [2, 2], [0, 2]] };
+  const [area] = normalizeNavigationAreas([turnaround]);
+  expect(area).toMatchObject({ kind: 'turnaround_area', label: '회차구간', site: null });
+  expect(areaIsDestination(area, { active: true, site: 'B12', state: 'RETURN_WITH_CARGO' })).toBe(false);
+  expect(areaIsDestination(area, { active: true, site: 'B12', state: 'MOVING_TO_SITE' })).toBe(false);
+  expect(normalizeNavigationAreas([{ ...turnaround, source: 'drop_zones_yaml' },
+    { ...turnaround, site: 'B12' }])).toEqual([]);
+});
+
 test('malformed, crossed, spoofed and duplicate catalog polygons fail closed', () => {
   const crossed = campsite(1, [[0, 0], [2, 2], [0, 2], [2, 0]]);
   const duplicate = campsite(1, [[0, 0], [2, 0], [2, 0], [0, 2]]);

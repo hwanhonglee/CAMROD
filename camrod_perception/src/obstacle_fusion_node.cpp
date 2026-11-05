@@ -67,7 +67,7 @@ public:
     // hardcoded 0.3 m). Points closer than this in the effective forward axis
     // (eff_Y = raw_X) are ignored.
     lidar_min_forward_m_ = static_cast<float>(
-      declare_parameter<double>("lidar_min_forward_m", 1.0));
+      declare_parameter<double>("lidar_min_forward_m", 0.5));
 
     // Extrinsic translation: camera position relative to LiDAR effective frame
     // [m]

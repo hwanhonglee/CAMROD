@@ -120,7 +120,8 @@ class DrivingSnapshotTest(unittest.TestCase):
         self.cache.map_areas([site])
         self.assertTrue(self.cache.snapshot({})["base_map"]["valid"])
         for wrong in ({"frame_id": "odom"}, {"source": "inferred"}, {"site": "B99"},
-                      {"kind": "unknown"}, {"id": ""}, {"points": []}):
+                      {"kind": "unknown"}, {"id": ""}, {"points": []},
+                      {"kind": "turnaround_area", "source": "drop_zones_yaml"}):
             self.cache.map_areas([{**site, **wrong}])
             self.assertEqual(self.cache.snapshot({})["base_map"]["areas"], [])
         self.cache.map_areas([site, site])
@@ -145,6 +146,10 @@ class DrivingSnapshotTest(unittest.TestCase):
                 {"type": "camping_site_1", "x": 999, "y": 999, "corners": corners},
                 {"type": "camping_site_2", "x": 6, "y": 7},
                 {"type": "camping_site_3", "frame_id": "unknown", "corners": corners},
+            ], "turnaround_areas": [
+                # HJ_261105 - B11-B13 return turnaround polygon ("회차구간").
+                {"id": "dz_area_7168", "type": "turnaround_area", "corners": corners},
+                {"id": "dz_area_9999", "type": "camping_site_4", "corners": corners},
             ]}))
             drops.write_text(yaml.safe_dump({"drop_zones": [
                 {"id": "authored_station", "type": "drop_zone", "corners": corners},
@@ -153,8 +158,11 @@ class DrivingSnapshotTest(unittest.TestCase):
                 default_goal_frame_id="map", get_logger=lambda: SimpleNamespace(warning=warnings.append))
             self.cache.map_areas(loader(backend))
             areas = self.cache.snapshot({})["base_map"]["areas"]
-            self.assertEqual([area["id"] for area in areas], ["camping_site_1", "authored_station"])
+            self.assertEqual([area["id"] for area in areas],
+                             ["camping_site_1", "dz_area_7168", "authored_station"])
             self.assertEqual(areas[0]["points"], [[3, 4], [7, 4], [7, 8], [3, 8]])
+            self.assertEqual((areas[1]["kind"], areas[1]["label"], areas[1]["site"]),
+                             ("turnaround_area", "회차구간", None))
             self.assertEqual(warnings, [])
             backend.camping_sites_yaml = str(Path(directory) / "missing.yaml")
             self.cache.map_areas(loader(backend))
