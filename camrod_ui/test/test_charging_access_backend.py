@@ -152,27 +152,28 @@ def test_stale_completion_cannot_skip_native_exit_acceptance(access_backend):
     assert not UiBackendNode.charging_access_snapshot(node)["cargo_access_ready"]
 
 
-def test_existing_dwell_holds_and_revalidates_soc_before_exit(access_backend):
+# HJ_261106 - Cargo access no longer reuses the 7 s charging departure dwell;
+# the move_front announcement is the only wait, so the same guards apply to it.
+def test_move_front_cue_holds_and_revalidates_soc_before_exit(access_backend):
     node = access_backend
     node.charging_departure_delay_s = 7.0
+    callbacks = deferred_voice(node)
     assert request(node)["success"]
-    timer = node._charging_departure_transition_timer
-    assert timer.period == 7.0
     assert ("platform_drive_enable", False) in node.events
     assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
     node._state.battery_percentage = 34
-    timer.callback()
+    callbacks[0]()
     assert node._charging_access_phase == "error"
     assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
 
 
-def test_stop_invalidates_pending_dwell_and_late_terminal(access_backend):
+def test_stop_invalidates_pending_cue_and_late_terminal(access_backend):
     node = access_backend
     node.charging_departure_delay_s = 7.0
+    callbacks = deferred_voice(node)
     request(node)
-    timer = node._charging_departure_transition_timer
     UiBackendNode._stop_active_service(node, "test_stop")
-    timer.callback()
+    callbacks[0]()
     exit_complete(node)
     assert node._charging_access_phase == "inactive"
     assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
@@ -249,13 +250,13 @@ def test_native_error_clears_access_intent_and_holds_motion(access_backend):
 
 
 @pytest.mark.parametrize("alias", ["set_engage", "set_operation_mode"])
-def test_public_disengage_retires_access_before_a_late_dwell(alias, access_backend):
+def test_public_disengage_retires_access_before_a_late_cue(alias, access_backend):
     node = access_backend
     node.charging_departure_delay_s = 7.0
+    callbacks = deferred_voice(node)
     request(node)
-    timer = node._charging_departure_transition_timer
     assert getattr(UiBackendNode, alias)(node, False)["success"]
-    timer.callback()
+    callbacks[0]()
     assert node._charging_access_phase == "inactive"
     assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
 
@@ -351,18 +352,6 @@ def test_contact_release_does_not_skip_other_delayed_admission_guards(access_bac
     assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
 
 
-def test_contact_loss_during_dwell_still_rejects_before_own_handoff(access_backend):
-    node = access_backend
-    node.charging_departure_delay_s = 7.0
-    request(node)
-    assert not any(event == ("parking_operation", MotionOperation.CANCEL) for event in node.events)
-    node._latest_platform_is_charging = False
-    node._charging_departure_transition_timer.callback()
-    assert node._charging_access_phase == "error"
-    assert not node._drop_zone_exit_active  # Failure cleanup may cancel owners, but never opens EXIT.
-    assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
-
-
 def test_stop_after_own_handoff_invalidates_late_voice_release(access_backend):
     node = access_backend
     callbacks = deferred_voice(node)
@@ -372,3 +361,59 @@ def test_stop_after_own_handoff_invalidates_late_voice_release(access_backend):
     callbacks[0]()
     assert node._charging_access_phase == "inactive"
     assert not any(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
+
+
+# HJ_261106 - "앞으로 이동" speaks system.move_front before any motion and
+# system.ready once the forward move has stopped.
+def recording_voice(node):
+    calls = []
+    node._voice_gate = Mock()
+    node._voice_gate.busy = True
+
+    def start(keys, callback, **kwargs):
+        calls.append((tuple(keys), callback))
+        if not keys:
+            callback()  # Same as VoiceDepartureGate: nothing to say.
+        return tuple(keys)
+
+    node._voice_gate.start.side_effect = start
+    node.pub_voice_say = Mock()
+    node._publish_voice_say = lambda key: UiBackendNode._publish_voice_say(node, key)
+    node._now_s = lambda: 100.0
+    return calls
+
+
+def said(node):
+    return [call.args[0].key for call in node.pub_voice_say.publish.call_args_list]
+
+
+def exits(node):
+    return sum(event == ("drop_zone_operation", MotionOperation.EXIT) for event in node.events)
+
+
+def test_move_front_cue_precedes_exit_and_ready_follows_stop(access_backend):
+    node = access_backend
+    calls = recording_voice(node)
+    assert request(node)["success"]
+    assert calls[0][0] == ("system.move_front",)
+    assert exits(node) == 0
+    contact_released(node)
+    calls[0][1]()
+    assert exits(node) == 1
+    exit_complete(node)
+    assert said(node)[-1] == "system.ready"
+
+
+def test_charging_access_skips_departure_dwell_and_moves_after_cue(access_backend):
+    # HJ_261106 - The 7 s charging departure dwell belongs to campsite
+    # departures; pulling forward off the charger only waits for move_front.
+    node = access_backend
+    node.charging_departure_delay_s = 7.0
+    calls = recording_voice(node)
+    assert request(node)["success"]
+    assert getattr(node, "_charging_departure_transition_timer", None) is None
+    assert [keys for keys, _ in calls] == [("system.move_front",)]
+    assert exits(node) == 0
+    contact_released(node)
+    calls[0][1]()
+    assert exits(node) == 1

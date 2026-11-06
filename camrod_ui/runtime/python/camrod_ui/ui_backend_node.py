@@ -1149,7 +1149,8 @@ class UiBackendNode(Node):
             0.5,
             float(
                 self.declare_parameter(
-                    "voice_departure_gate_timeout_s", 12.0
+                    "voice_departure_gate_timeout_s",
+                    VoiceDepartureGate.DEFAULT_TIMEOUT_S,
                 ).value
             ),
         )
@@ -1770,9 +1771,11 @@ class UiBackendNode(Node):
         self._startup_fail_closed_timer = self.create_timer(
             0.5, self._reassert_startup_fail_closed
         )
+        # HJ_261106 - A fine tick so the post-speech settle window, not the
+        # timer period, decides when motion starts.
         self._voice_gate = VoiceDepartureGate()
         self._voice_gate_timer = self.create_timer(
-            0.5, self._on_voice_gate_timer
+            0.1, self._on_voice_gate_timer
         )
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -2207,6 +2210,9 @@ class UiBackendNode(Node):
                         f"discarded stale voice dispatch: {label}"
                     )
                     return
+                self.get_logger().info(
+                    f"departure released after voice cue: {label}"
+                )
                 on_complete()
 
             lock = getattr(self, "_destination_dispatch_lock", None)
@@ -2234,16 +2240,19 @@ class UiBackendNode(Node):
             self._publish_voice_say(key)
 
     def _on_voice_state(self, msg: VoiceState) -> None:
+        now_s = self._now_s()
         gate = getattr(self, "_voice_gate", None)
-        if gate is None or int(msg.state) not in {
-            VoiceState.STATE_PLAYING,
-            VoiceState.STATE_IDLE,
-        }:
+        if gate is None:
             return
+        # HJ_261106 - QUEUED counts as busy too: motion waits for silence.
         gate.on_voice_state(
             playing=int(msg.state) == VoiceState.STATE_PLAYING,
             current_key=str(msg.current_key),
-            now_s=self._now_s(),
+            now_s=now_s,
+            queue_size=max(
+                int(msg.queue_size),
+                1 if int(msg.state) == VoiceState.STATE_QUEUED else 0,
+            ),
         )
 
     def _site_departure_voice_keys(self, site: str) -> tuple[str, ...]:
@@ -4846,6 +4855,10 @@ class UiBackendNode(Node):
             "blocked_reason": leave_block if phase in {"inactive", "error"} else platform_block,
         }
 
+    # HJ_261106 - "앞으로 이동" cue before the forward move; "ready" once stopped.
+    CHARGING_ACCESS_DEPARTURE_VOICE_KEYS = ("system.move_front",)
+    CHARGING_ACCESS_READY_VOICE_KEY = "system.ready"
+
     def _fail_charging_access(self, message: str) -> None:
         # HH_261102 - Clear every deferred owner before surfacing a retryable access failure.
         UiBackendNode._stop_active_service_serialized(self, "charging_access:failure")
@@ -4873,10 +4886,10 @@ class UiBackendNode(Node):
             self._cancel_pending_manual_return_transition("charging_access:leave")
             self._request_nav2_cancel("charging_access:leave")
             self._charging_departure_from_charger = UiBackendNode._charging_departure_delay_required(self)
-            if self._charging_departure_from_charger:
-                UiBackendNode._schedule_charging_departure_transition(self, "http:charging_access:leave")
-            else:
-                UiBackendNode._begin_drop_zone_departure(self, "http:charging_access:leave")
+            # HJ_261106 - Pulling forward off the charger needs no stationary
+            # dwell: system.move_front plays first and EXIT follows as soon as
+            # it has finished (see _begin_drop_zone_departure_serialized).
+            UiBackendNode._begin_drop_zone_departure(self, "http:charging_access:leave")
             snapshot = UiBackendNode.charging_access_snapshot(self)
             return {"success": snapshot["phase"] != "error", **snapshot}
 
@@ -5081,7 +5094,7 @@ class UiBackendNode(Node):
 
         UiBackendNode._dispatch_after_voice(
             self,
-            ("navigation.please_step_aside",) if cargo_access else UiBackendNode._site_departure_voice_keys(self, pending[0]),
+            UiBackendNode.CHARGING_ACCESS_DEPARTURE_VOICE_KEYS if cargo_access else UiBackendNode._site_departure_voice_keys(self, pending[0]),
             release,
             label="charging_access_departure" if cargo_access else f"drop_zone_departure:{pending[0]}",
         )
@@ -5304,6 +5317,10 @@ class UiBackendNode(Node):
             self._charging_access_message = "정차했습니다. drop_zone 내 위치와 충전 해제 상태를 확인해 주세요."
             UiBackendNode._hold_charging_departure_motion(self, "charging_access:ready")
             self._publish_service_state(AvgServiceState.DROP_ZONE_WAIT, source="charging_access:ready")
+            # HJ_261106 - Forward move finished and stopped: announce readiness.
+            if getattr(self, "pub_voice_say", None) is not None:
+                UiBackendNode._publish_voice_say(
+                    self, UiBackendNode.CHARGING_ACCESS_READY_VOICE_KEY)
             return
         if pending is None:
             if (getattr(self, "_urgent_return_after_departure", False)
@@ -8354,11 +8371,24 @@ class UiBackendNode(Node):
             }
 
         if guest_recall:
-            recall_published = (
-                UiBackendNode._publish_planning_camping_site_recall(
-                    self, mission_key, source
+            if not str(mission_key).strip():
+                recall_published = (
+                    UiBackendNode._publish_planning_camping_site_recall(
+                        self, mission_key, source
+                    )
                 )
-            )
+            else:
+                # HJ_261106 - Announce first; the recall release follows playback.
+                recall_published = True
+                recall_key = mission_key
+                UiBackendNode._dispatch_after_voice(
+                    self,
+                    UiBackendNode._site_departure_voice_keys(self, site),
+                    lambda: UiBackendNode._publish_planning_camping_site_recall(
+                        self, recall_key, source
+                    ),
+                    label=f"recall_departure:{site}",
+                )
             return {
                 "site": site,
                 "run": True,

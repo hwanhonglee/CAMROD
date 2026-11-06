@@ -101,6 +101,8 @@ class VoiceEventAdapterNode(Node):
         # return route. Keep the reactive site cue off, but the return cue on.
         self.declare_parameter('enable_reactive_departure_cue', False)
         self.declare_parameter('enable_reactive_return_cue', True)
+        # HJ_261106 - Announce site arrival after crab-in + 180 deg turn.
+        self.declare_parameter('arrival_after_site_entry', True)
 
         p = self.get_parameter
         self._en_nav = p('enable_nav_audio').value
@@ -166,6 +168,8 @@ class VoiceEventAdapterNode(Node):
                 p('max_ready_localization_mode').value),
             announce_departure=self._en_reactive_departure_cue,
             announce_return_departure=self._en_reactive_return_cue,
+            arrival_after_site_entry=bool(
+                p('arrival_after_site_entry').value),
         )
 
         # 발행: voice_announcer/say → /voice/voice_announcer/say

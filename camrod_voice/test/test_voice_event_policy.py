@@ -920,3 +920,65 @@ def test_stale_goal_reached_at_startup_is_silent():
     )
 
     assert events == []
+
+
+# HJ_261106 - Site arrival waits for the campsite entry (crab-in + 180 deg
+# turn) to settle in UNLOAD_WAIT instead of the roadside goal.
+def _start_site_trip(policy):
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    return policy.update_planning(
+        state="RUNNING",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+
+
+def test_site_arrival_waits_for_entry_and_turn_to_finish():
+    policy, _ = make_ready_policy()
+    policy.update_campsite_maneuver("IDLE")
+    _start_site_trip(policy)
+
+    roadside = policy.update_planning(
+        state="GOAL_REACHED",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert "navigation.arrived_campsite" not in event_keys(roadside)
+    for phase in ("ALIGN_ENTRY_YAW", "CRAB_IN", "ROTATE_180"):
+        assert "navigation.arrived_campsite" not in event_keys(
+            policy.update_campsite_maneuver(phase))
+
+    parked = policy.update_campsite_maneuver("UNLOAD_WAIT")
+    repeated = policy.update_campsite_maneuver("UNLOAD_WAIT")
+
+    assert event_keys(parked) == ["navigation.arrived_campsite"]
+    assert repeated == []
+
+
+def test_site_entry_without_a_departed_trip_is_silent():
+    policy, _ = make_ready_policy()
+    policy.update_campsite_maneuver("IDLE")
+
+    assert policy.update_campsite_maneuver("UNLOAD_WAIT") == []
+
+
+def test_goal_reached_arrival_is_fallback_without_campsite_controller():
+    policy, _ = make_ready_policy()
+    _start_site_trip(policy)
+
+    events = policy.update_planning(
+        state="GOAL_REACHED",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+
+    assert event_keys(events) == ["navigation.arrived_campsite"]

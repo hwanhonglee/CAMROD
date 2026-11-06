@@ -111,6 +111,9 @@ class VoiceEventPolicy:
         "site": ("system.announce1", "system.announce2"),
         "drop_zone": ("navigation.return_to_dropzone",),
     }
+    # HJ_261106 - Campsite controller phase reached after crab-in/reverse-in and
+    # the 180 deg turn (or the roadside-stop service pose): robot is parked.
+    _SITE_ENTRY_COMPLETE_PHASE = "UNLOAD_WAIT"
     _SITE_ARRIVAL_SCENARIOS = frozenset(
         {
             "DELIVERY_TO_SITE",
@@ -140,6 +143,7 @@ class VoiceEventPolicy:
         max_ready_localization_mode: int = NORMAL_LOCALIZATION_MODE,
         announce_departure: bool = True,
         announce_return_departure: Optional[bool] = None,
+        arrival_after_site_entry: bool = True,
     ) -> None:
         self.required_modules = tuple(
             dict.fromkeys(
@@ -161,6 +165,12 @@ class VoiceEventPolicy:
             if announce_return_departure is None
             else bool(announce_return_departure)
         )
+        # HJ_261106 - Site arrival is announced when the campsite controller
+        # finishes its entry (crab-in + 180 deg turn) and settles in
+        # UNLOAD_WAIT, not when Nav2 reaches the roadside goal. Planning
+        # GOAL_REACHED remains the fallback only while that controller is
+        # absent (no status ever received).
+        self.arrival_after_site_entry = bool(arrival_after_site_entry)
 
         self.system_received = False
         self.system_modules: dict[str, ModuleSnapshot] = {}
@@ -186,6 +196,9 @@ class VoiceEventPolicy:
 
         self.docking_phase = ""
         self.campsite_maneuver_phase = ""
+        self.campsite_status_received = False
+        # Site trip whose arrival cue is still owed once entry completes.
+        self._pending_site_arrival: Optional[tuple[str, str, str]] = None
         self._recall_turnaround_active = False
         self._recall_clearance_announced = False
 
@@ -343,7 +356,15 @@ class VoiceEventPolicy:
         """
 
         # HH_260911 - Hold return speech through the stationary recall-turnaround phase.
+        previous_phase = self.campsite_maneuver_phase
         self.campsite_maneuver_phase = str(phase).strip().upper()
+        self.campsite_status_received = True
+        entry_completed = (
+            self.campsite_maneuver_phase == self._SITE_ENTRY_COMPLETE_PHASE
+            and previous_phase != self._SITE_ENTRY_COMPLETE_PHASE
+        )
+        if self.campsite_maneuver_phase == "ERROR":
+            self._pending_site_arrival = None
         if self.campsite_maneuver_phase == "RECALL_CLEARANCE_WAIT":
             self._recall_turnaround_active = True
         elif self.campsite_maneuver_phase in {"IDLE", "DONE", "ERROR"}:
@@ -351,7 +372,19 @@ class VoiceEventPolicy:
             # ask occupants to clear the site again, including the same site.
             self._recall_turnaround_active = False
             self._recall_clearance_announced = False
-        return self._events_after_update()
+        events = self._events_after_update()
+        if (
+            entry_completed
+            and self.arrival_after_site_entry
+            and self.startup_announced
+            and self._pending_site_arrival is not None
+            and not self._recall_turnaround_active
+        ):
+            # HJ_261106 - Crab-in and the 180 deg turn are finished; the robot
+            # is parked inside the site.
+            self._pending_site_arrival = None
+            events.append(VoiceEvent("navigation.arrived_campsite", priority=1))
+        return events
 
     def update_action_server(self, ready: bool) -> list[VoiceEvent]:
         self.action_server_ready = bool(ready)
@@ -648,6 +681,8 @@ class VoiceEventPolicy:
             return None
         self._announced_motion_signatures.add(signature)
         self._departed_trips.add(identity)
+        # HJ_261106 - A new departure supersedes an arrival owed to an older trip.
+        self._pending_site_arrival = identity if identity[0] == "site" else None
         if identity[0] == "site" and not self.announce_departure:
             return None
         if identity[0] == "drop_zone" and not self.announce_return_departure:
@@ -662,6 +697,10 @@ class VoiceEventPolicy:
             or not self._valid_goal()
             or self._recall_turnaround_active
         ):
+            return None
+        if self.arrival_after_site_entry and self.campsite_status_received:
+            # HJ_261106 - The campsite controller owns arrival; see
+            # update_campsite_maneuver (UNLOAD_WAIT after entry + turn).
             return None
         if self.planning_state != "GOAL_REACHED":
             return None
@@ -679,6 +718,7 @@ class VoiceEventPolicy:
         if signature in self._announced_arrival_signatures:
             return None
         self._announced_arrival_signatures.add(signature)
+        self._pending_site_arrival = None
         return VoiceEvent("navigation.arrived_campsite", priority=1)
 
     def _obstacle_hold_active(self) -> bool:
