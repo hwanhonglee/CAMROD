@@ -982,3 +982,78 @@ def test_goal_reached_arrival_is_fallback_without_campsite_controller():
     )
 
     assert event_keys(events) == ["navigation.arrived_campsite"]
+
+
+def _engaged_ready_policy(**kwargs):
+    policy = VoiceEventPolicy(REQUIRED_MODULES, **kwargs)
+    policy.announce_startup()
+    policy.update_system(healthy_modules())
+    policy.update_planning(
+        state="WAIT_DZ", scenario="WAIT_DROP_ZONE", active_mission_key="",
+        active_goal_source="none", return_requested=False,
+    )
+    policy.update_action_server(True)
+    policy.update_localization(0)
+    policy.update_tf(True)
+    policy.update_platform(estop=False, error_code=0)
+    policy.update_engaged(True)
+    policy.update_gate(level=0, operating_state="ENABLED", message="reasons=none")
+    return policy
+
+
+def _return_leg(policy, *, state="RETURNING", key, source, requested=False):
+    return policy.update_planning(
+        state=state, scenario="RETURN_TO_DROP_ZONE", active_mission_key=key,
+        active_goal_source=source, return_requested=requested,
+    )
+
+
+# HJ_261106 - B11-B13 drive to the turnaround area before the drop-zone route.
+def test_turnaround_area_leg_plays_return_bed_and_cue_once():
+    policy = _engaged_ready_policy()
+
+    to_area = _return_leg(
+        policy, key="turnaround_area", source="turnaround_area_return")
+    assert event_keys(to_area) == ["navigation.to_dropzone"]
+    assert policy.travel_context() == "drop_zone"
+    assert policy.travel_active
+    assert event_keys(policy.travel_announce_events()) == [
+        "navigation.return_to_dropzone"]
+
+    # Stationary crab-in / 180 deg turn / crab-out at the area ends the leg.
+    _return_leg(
+        policy, state="GOAL_REACHED", key="turnaround_area",
+        source="turnaround_area_return")
+    assert not policy.travel_active
+
+    # Requested, not yet released: still silent.
+    assert _return_leg(
+        policy, key="turnaround_area", source="turnaround_area_return",
+        requested=True) == []
+
+    # Drop-zone route after the turnaround resumes the bed, no repeated cue.
+    after_turn = _return_leg(
+        policy, key="drop_zone", source="auto_snapper:drop_zone")
+    assert after_turn == []
+    assert policy.travel_active
+
+
+def test_ordinary_return_after_turnaround_return_still_speaks():
+    policy = _engaged_ready_policy()
+    _return_leg(policy, key="turnaround_area", source="turnaround_area_return")
+    _return_leg(policy, key="drop_zone", source="auto_snapper:drop_zone")
+    policy.update_planning(
+        state="RUNNING", scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_3", active_goal_source="regulated",
+        return_requested=False,
+    )
+    released = _return_leg(
+        policy, key="drop_zone", source="auto_snapper:drop_zone:2")
+    assert event_keys(released) == ["navigation.to_dropzone"]
+
+
+def test_return_route_keys_can_be_disabled():
+    policy = _engaged_ready_policy(return_route_mission_keys=())
+    assert _return_leg(
+        policy, key="turnaround_area", source="turnaround_area_return") == []
+    assert not policy.travel_active

@@ -103,6 +103,10 @@ class VoiceEventAdapterNode(Node):
         self.declare_parameter('enable_reactive_return_cue', True)
         # HJ_261106 - Announce site arrival after crab-in + 180 deg turn.
         self.declare_parameter('arrival_after_site_entry', True)
+        # HJ_261106 - Mission keys of return legs that do not target the drop
+        # zone directly (B11-B13 turnaround area). Keep in sync with the
+        # turnaround_areas[].type keys in camping_sites.yaml.
+        self.declare_parameter('return_route_mission_keys', ['turnaround_area'])
 
         p = self.get_parameter
         self._en_nav = p('enable_nav_audio').value
@@ -170,6 +174,10 @@ class VoiceEventAdapterNode(Node):
             announce_return_departure=self._en_reactive_return_cue,
             arrival_after_site_entry=bool(
                 p('arrival_after_site_entry').value),
+            return_route_mission_keys=[
+                str(key).strip()
+                for key in (p('return_route_mission_keys').value or [])
+            ],
         )
 
         # 발행: voice_announcer/say → /voice/voice_announcer/say

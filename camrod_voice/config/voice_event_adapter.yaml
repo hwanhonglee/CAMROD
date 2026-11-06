@@ -73,3 +73,8 @@
     max_ready_localization_mode: 0
 
     return_mission_key: "drop_zone"
+    # HJ_261106 - B11-B13 return legs to the shared turnaround area count as
+    # the drop-zone return (music bed + reminders). Must match the
+    # turnaround_areas[].type keys in camping_sites.yaml.
+    return_route_mission_keys:
+      - turnaround_area

@@ -144,6 +144,7 @@ class VoiceEventPolicy:
         announce_departure: bool = True,
         announce_return_departure: Optional[bool] = None,
         arrival_after_site_entry: bool = True,
+        return_route_mission_keys: Sequence[str] = ("turnaround_area",),
     ) -> None:
         self.required_modules = tuple(
             dict.fromkeys(
@@ -155,6 +156,15 @@ class VoiceEventPolicy:
         self.return_mission_key = (
             str(return_mission_key).strip() or "drop_zone"
         )
+        # HJ_261106 - B11-B13 returns first drive to a shared turnaround area
+        # under RETURN_TO_DROP_ZONE with that area's mission key. It is the
+        # same cargo return, so it shares the drop-zone voice context (music
+        # bed, reminders, return departure cue).
+        self.return_route_mission_keys = frozenset(
+            str(key).strip()
+            for key in return_route_mission_keys
+            if str(key).strip()
+        ) - {self.return_mission_key}
         self.max_ready_localization_mode = int(max_ready_localization_mode)
         # HH_261002 - UI gates site departure speech, but does not publish a
         # return departure key. Keep the two directions independently enabled
@@ -209,6 +219,8 @@ class VoiceEventPolicy:
         # is latched so a transient planning state cannot end the trip early.
         self._trip_identity: Optional[tuple[str, str, str]] = None
         self._departed_trips: set[tuple[str, str, str]] = set()
+        # Most recent departed trip; lets the leg after a turnaround stay silent.
+        self._last_departed_trip: Optional[tuple[str, str, str]] = None
         self._announced_motion_signatures: set[tuple[object, ...]] = set()
         self._announced_arrival_signatures: set[tuple[object, ...]] = set()
         self._obstacle_announced = False
@@ -605,7 +617,7 @@ class VoiceEventPolicy:
         if self.planning_scenario in self._ROUTE_TO_DROP_ZONE_SCENARIOS:
             # A return that is still only requested has no released goal yet.
             if (
-                self.active_mission_key != self.return_mission_key
+                not self._is_return_route_key(self.active_mission_key)
                 or self.return_requested
             ):
                 return ""
@@ -616,6 +628,9 @@ class VoiceEventPolicy:
         ):
             return "site"
         return ""
+
+    def _is_return_route_key(self, key: str) -> bool:
+        return key == self.return_mission_key or key in self.return_route_mission_keys
 
     @property
     def travel_active(self) -> bool:
@@ -681,8 +696,20 @@ class VoiceEventPolicy:
             return None
         self._announced_motion_signatures.add(signature)
         self._departed_trips.add(identity)
+        previous_trip = self._last_departed_trip
+        self._last_departed_trip = identity
         # HJ_261106 - A new departure supersedes an arrival owed to an older trip.
         self._pending_site_arrival = identity if identity[0] == "site" else None
+        if (
+            identity[0] == "drop_zone"
+            and previous_trip is not None
+            and previous_trip[0] == "drop_zone"
+            and previous_trip[1] in self.return_route_mission_keys
+        ):
+            # HJ_261106 - The return cue was spoken when the robot left the
+            # site for the turnaround area; the leg after the turnaround
+            # resumes the music bed without repeating it.
+            return None
         if identity[0] == "site" and not self.announce_departure:
             return None
         if identity[0] == "drop_zone" and not self.announce_return_departure:
