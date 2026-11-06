@@ -259,6 +259,11 @@ class FakeSensorPublisher(Node):
                 ),
             ),
         )
+        # HJ_261106 - Hold simulated charger contact regardless of parking or
+        # mission phase, to exercise charging behavior without a docking run.
+        self.simulated_force_charging = bool(
+            self.declare_parameter("simulated_force_charging", False).value
+        )
         # Accept RViz "2D Pose Estimate" reset input.
         self.initialpose_topic = str(
             self.declare_parameter("initialpose_topic", "/localization/initialpose").value
@@ -716,7 +721,12 @@ class FakeSensorPublisher(Node):
             or self.pub_simulated_system_state is None
         ):
             return
-        if (
+        if self.simulated_force_charging:
+            if not self._simulated_is_charging:
+                self.get_logger().info("simulated charger contact forced on")
+            self._simulated_is_charging = True
+            self._simulated_charger_departure_since = None
+        elif (
             not self._simulated_is_charging
             and self._simulated_parking_wait_since is not None
             and now_sec - self._simulated_parking_wait_since
@@ -1505,6 +1515,14 @@ class FakeSensorPublisher(Node):
                 self.simulated_battery_percentage = max(
                     0.0, min(1.0, float(p.value))
                 )
+            elif p.name == "simulated_force_charging":
+                # HJ_261106 - Turning it off unplugs immediately and returns
+                # to the parking-driven contact model.
+                self.simulated_force_charging = bool(p.value)
+                if not self.simulated_force_charging:
+                    self._simulated_is_charging = False
+                    self._simulated_parking_wait_since = None
+                    self._simulated_charger_departure_since = None
             elif p.name == "freeze_motion":
                 self.freeze_motion = bool(p.value)
             elif p.name == "gnss_failure_after_s":

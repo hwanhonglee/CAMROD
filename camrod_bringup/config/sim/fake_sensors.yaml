@@ -50,6 +50,9 @@
     simulated_charger_contact_delay_s: 1.0
     simulated_charger_disconnect_delay_s: 1.0
     simulated_battery_percentage: 0.80
+    # HJ_261106 - true keeps the charger connected regardless of parking or
+    # mission phase. Toggle at runtime with `ros2 param set`.
+    simulated_force_charging: false
 
     # =========================================================================
     # 4. ODOMETRY TOPICS
