@@ -281,24 +281,24 @@ turnaround_areas:
   - id: "dz_area_7168"
     type: "turnaround_area"
     source: "area"
-    x: 23.604
-    y: -14.1597
+    x: 25.4605
+    y: -16.21
     z: 0
-    service_x: 23.843
-    service_y: -14.215
-    yaw_deg: -51.2
+    service_x: 25.708
+    service_y: -16.271
+    yaw_deg: -45.3
     service_mode: "turnaround"
     serves: ["camping_site_11", "camping_site_12", "camping_site_13"]
     corners:
-      - x: 20.6041
-        y: -13.4464
+      - x: 22.4003
+        y: -15.5287
         z: 0
-      - x: 23.3091
-        y: -11.3163
+      - x: 25.1052
+        y: -13.3986
         z: 0
-      - x: 26.4466
-        y: -15.1393
+      - x: 28.3921
+        y: -16.9445
         z: 0
-      - x: 24.2998
-        y: -16.9635
+      - x: 26.0959
+        y: -19.0458
         z: 0

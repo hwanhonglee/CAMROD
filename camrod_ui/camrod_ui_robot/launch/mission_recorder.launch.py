@@ -47,6 +47,8 @@ def generate_launch_description():
             executable="mission_recorder_node",
             name="mission_recorder",
             output="screen",
+            # HJ_261110 - Recording yields CPU to sensing/safety nodes.
+            prefix="nice -n 10",
             parameters=[parameters],
         ),
     ])

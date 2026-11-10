@@ -18,7 +18,13 @@
     # decimation off: VIC bilinear downscaling is sharper than apriltag's own
     # subsampling, so tag range is preserved rather than traded away.
     quad_decimate: 1.0
-    n_threads: 2
+    # HJ_261110 - CPU budget. ROI tracking keeps quad_decimate 1.0 every frame
+    # (near-dock precision unchanged). Untracked full-frame searches run at
+    # decimate 2.0 on every 2nd frame (10 fps -> 5 Hz); skipped frames return
+    # before cv_bridge. This may shorten first-acquisition range.
+    full_search_quad_decimate: 2.0
+    idle_frame_stride: 2
+    n_threads: 1
 
     # --- ROI tracking and reacquisition ---
     # HH_260720 - Track a local ROI and periodically search the full frame for reacquisition.

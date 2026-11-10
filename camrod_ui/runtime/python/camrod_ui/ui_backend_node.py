@@ -107,6 +107,7 @@ from camrod_ui.service_metrics import (
 )
 from camrod_ui.safety_reset import cancellations_complete, stationary_reset_blockers
 from camrod_ui.safety_reset_api import register_safety_reset_routes
+from camrod_ui.signal_profiler import SignalProfiler
 # HH_261102 - Charging access has an explicit same-origin request contract, not page-load motion.
 from camrod_ui.charging_access_api import register_charging_access_routes
 from camrod_ui.ui_state_policy import UiStatePolicy
@@ -1261,8 +1262,10 @@ class UiBackendNode(Node):
         self.readiness_check_period_s = max(
             0.1,
             float(
+                # HJ_261110 - 1 Hz is enough for the UI ready badge; halves
+                # the main-thread TF/action-server polling cost.
                 self.declare_parameter(
-                    "readiness_check_period_s", 0.5
+                    "readiness_check_period_s", 1.0
                 ).value
             ),
         )
@@ -10206,6 +10209,8 @@ class UiBackendNode(Node):
 def main() -> None:
     rclpy.init()
     node = UiBackendNode()
+    # HJ_261110 - kill -USR1 <pid> starts a main-thread profile, -USR2 writes it.
+    SignalProfiler(log=node.get_logger().info).install()
     try:
         rclpy.spin(node)
     # HH_260805 - rclpy may report launch-driven SIGINT as either exception;

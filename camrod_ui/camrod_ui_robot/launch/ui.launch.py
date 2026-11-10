@@ -113,6 +113,8 @@ def generate_launch_description():
         executable='mission_recorder_node',
         name='mission_recorder',
         output='screen',
+        # HJ_261110 - Recording yields CPU to sensing/safety nodes.
+        prefix='nice -n 10',
         condition=IfCondition(LaunchConfiguration('enable_mission_recorder')),
         parameters=[{
             'storage_root': LaunchConfiguration('mission_records_root'),
@@ -373,6 +375,8 @@ def generate_launch_description():
         executable='ui_backend_node',
         name='ui_backend',
         output='screen',
+        # HJ_261110 - The UI backend yields CPU to sensing/safety nodes.
+        prefix='nice -n 5',
         condition=IfCondition(LaunchConfiguration('enable_ui_backend')),
         parameters=[{
             'host': LaunchConfiguration('ui_host'),

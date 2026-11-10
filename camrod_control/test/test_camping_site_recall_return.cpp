@@ -73,9 +73,26 @@ protected:
   }
 
   Phase phase() const { return node_->phase_; }
+  // HJ_261110 - Gate obstacle-hold helpers for the paused motion timeout.
+  void setGateObstacleHold(const bool held) {
+    node_->gate_obstacle_hold_ = camrod_control::gateStatusIndicatesObstacleHold(
+        held ? "SAFETY_HOLD" : "ENABLED",
+        held ? "state=SAFETY_HOLD reasons=cost_stop_latched" : "state=ENABLED reasons=none");
+    node_->last_gate_status_time_ = node_->now();
+  }
+  void observeHeldUntilNow() { node_->phase_timer_.observe(node_->now().seconds(), true); }
+  double pausedSeconds() const { return node_->phase_timer_.pausedSeconds(); }
+  double crabEntryTimeout() const {
+    return node_->crab_duration_s_ + node_->crab_timeout_margin_s_;
+  }
+  void refreshPose() {
+    setPose(node_->last_pose_->pose.position.x, node_->last_pose_->pose.position.y, entry_yaw_);
+  }
   void tick() { node_->onTimer(); }
   void elapsed(const double seconds) {
     node_->phase_start_time_ = node_->now() - rclcpp::Duration::from_seconds(seconds);
+    // HJ_261110 - Motion timeouts read the obstacle-hold paused timer.
+    node_->phase_timer_.restart(node_->phase_start_time_.seconds());
     // HH_260928 - The voice timeout uses absolute time, independently of phase_start_time_.
     // Advance its clock by the same simulated interval without disabling it.
     node_->recall_clearance_voice_gate_.tick(node_->now().seconds() + seconds);
@@ -674,4 +691,29 @@ TEST_F(CampingSiteManeuverControllerTest, FinalLoadingConfirmationWaitsForFreshP
   EXPECT_EQ(phase(), Phase::kAlignRetraceYaw);
   tick();
   EXPECT_EQ(phase(), Phase::kCrabOut);
+}
+
+// HJ_261110 - A gate obstacle hold pauses CRAB_IN's timeout; without the hold
+// the same elapsed time still fails closed.
+TEST_F(CampingSiteManeuverControllerTest, ObstacleHoldPausesCrabEntryTimeout) {
+  startRecall(1, false);
+  tick();
+  ASSERT_EQ(phase(), Phase::kCrabIn);
+  const double timeout = crabEntryTimeout();
+
+  // The robot stood in an obstacle hold for longer than the whole timeout.
+  setGateObstacleHold(true);
+  elapsed(timeout + 30.0);
+  observeHeldUntilNow();
+  refreshPose();
+  tick();
+  EXPECT_EQ(phase(), Phase::kCrabIn);
+  EXPECT_GT(pausedSeconds(), timeout + 29.0);
+
+  // Unheld time counts as before.
+  setGateObstacleHold(false);
+  elapsed(timeout + 1.0);
+  refreshPose();
+  tick();
+  EXPECT_EQ(phase(), Phase::kError);
 }

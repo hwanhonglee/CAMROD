@@ -110,7 +110,7 @@ ament_target_dependencies(apriltag_parking_detector_component
   tf2_ros
   cv_bridge
 )
-target_include_directories(apriltag_parking_detector_component PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_include_directories(apriltag_parking_detector_component PRIVATE include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(apriltag_parking_detector_component
   apriltag::apriltag
   ${OpenCV_LIBS}
@@ -145,6 +145,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_observed_lidar_extent test/test_observed_lidar_extent.cpp)
   target_include_directories(test_observed_lidar_extent PRIVATE include)
   target_compile_features(test_observed_lidar_extent PRIVATE cxx_std_17)
+  # HJ_261110 - Rear parking-tag detector idle stride / decimation policy.
+  ament_add_gtest(test_apriltag_search_policy test/test_apriltag_search_policy.cpp)
+  target_include_directories(test_apriltag_search_policy PRIVATE include)
 
   find_package(ament_lint_auto REQUIRED)
   # HH_260721 - Keep vendored YOLO sources outside CAMROD package lint ownership.

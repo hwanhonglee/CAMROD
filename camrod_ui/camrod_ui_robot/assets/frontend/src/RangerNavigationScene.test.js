@@ -3,6 +3,7 @@ import { Color, WebGLRenderer } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createRoot } from 'react-dom/client';
 import RangerNavigationScene, { configureCargoPreview, hasIllustrativeRoute,
+  NAVIGATION_FRAME_MIN_INTERVAL_MS, NAVIGATION_MAX_FPS,
   navigationCameraSideOffset, baseMapLinePositions, baseMapLineColors, syncBaseMapVisibility,
   projectVisibleObjectLabel, navigationIllustrationInput, illustratedRoadPositions,
   LANE_BOUNDARY_WIDTH_M, boundaryPaintPositions } from './RangerNavigationScene';
@@ -278,4 +279,11 @@ test('detail direction cycles four faces without triggering dismissal', () => {
   }
   expect(outer).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain('임시 선반');
+});
+
+test('3D rendering is capped at about 30 fps on a 60 Hz display', () => {
+  // HJ_261110 - Every 2nd 60 Hz frame passes even with a little RAF jitter.
+  expect(NAVIGATION_MAX_FPS).toBe(30);
+  expect(2 * (1000 / 60) - 1).toBeGreaterThanOrEqual(NAVIGATION_FRAME_MIN_INTERVAL_MS);
+  expect(1000 / 60 + 1).toBeLessThan(NAVIGATION_FRAME_MIN_INTERVAL_MS);
 });

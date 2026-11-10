@@ -82,9 +82,25 @@ class TurnaroundAreaReturnTest(unittest.TestCase):
             {f"camping_site_{i}": "turnaround_area" for i in (11, 12, 13)},
         )
         area = node.keypoints["turnaround_area"]
-        self.assertAlmostEqual(area.x, 23.843)
-        self.assertAlmostEqual(area.y, -14.215)
-        self.assertAlmostEqual(area.yaw_deg, -51.2)
+        # HJ_261109 - Area 7168 moved ~2.75 m along the road (map v29).
+        self.assertAlmostEqual(area.x, 25.708)
+        self.assertAlmostEqual(area.y, -16.271)
+        self.assertAlmostEqual(area.yaw_deg, -45.3)
+        # The in-place 180 deg turn must stay inside the authored polygon:
+        # Ranger half-diagonal is ~0.96 m (1.564 m x 1.121 m body).
+        record = yaml.safe_load(SITES_YAML.read_text())["turnaround_areas"][0]
+        corners = [(c["x"], c["y"]) for c in record["corners"]]
+        inside = False
+        clearance = float("inf")
+        for (ax, ay), (bx, by) in zip(corners[-1:] + corners[:-1], corners):
+            if (ay > area.y) != (by > area.y) and \
+                    area.x < (bx - ax) * (area.y - ay) / (by - ay) + ax:
+                inside = not inside
+            dx, dy = bx - ax, by - ay
+            t = max(0.0, min(1.0, ((area.x - ax) * dx + (area.y - ay) * dy) / (dx * dx + dy * dy)))
+            clearance = min(clearance, ((area.x - ax - t * dx) ** 2 + (area.y - ay - t * dy) ** 2) ** 0.5)
+        self.assertTrue(inside)
+        self.assertGreater(clearance, 0.96 + 0.3)
 
     def test_roadside_forward_request_goes_to_area_then_drop_zone(self) -> None:
         node = _node()

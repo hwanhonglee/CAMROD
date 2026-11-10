@@ -108,7 +108,9 @@
     return_lanelet_handoff_distance_m: 0.15
     return_lanelet_handoff_hold_s: 1.20
     crab_timeout_speed_scale: 0.4
-    crab_timeout_margin_s: 8.0
+    # HJ_261110 - Obstacle holds no longer count; the margin covers the
+    # post-stop 0.2 m/s resume cap and the resume voice wait.
+    crab_timeout_margin_s: 20.0
     # HH_260818 - CRAB_OUT shares time with bounded lane-boundary recovery.
     # Match that 90 s envelope instead of failing on the shorter entry timeout.
     crab_return_timeout_s: 90.0
@@ -118,7 +120,8 @@
     max_forward_residual_m: 0.8
     # HH_260824 - A normal lanelet-yaw correction must either settle or fail
     # closed; never publish angular.z indefinitely on a reachable but stuck yaw.
-    entry_yaw_alignment_timeout_s: 15.0
+    # HJ_261110 - 15 -> 30 s; obstacle holds no longer count.
+    entry_yaw_alignment_timeout_s: 30.0
 
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35
@@ -219,6 +222,10 @@
     # =========================================================================
     # HH_260720 - Preserve the previous drop-zone yaw-alignment tuning.
     yaw_tolerance_deg: 5.0
+    # HJ_261110 - Road-exit alignment only (parking keeps 5 deg). Noisy GNSS
+    # heading kept the 5 deg settle window from latching and delayed the site
+    # goal by 10 s or more. Nav2 corrects the remaining heading while driving.
+    exit_yaw_tolerance_deg: 10.0
     yaw_proportional_gain: 1.2
     maximum_angular_speed_radps: 0.35
     # HH_260810 - Keep the platform stationary before reverse-parking handoff.

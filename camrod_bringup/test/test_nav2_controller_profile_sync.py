@@ -693,7 +693,9 @@ def test_campsite_return_uses_latched_axis_stages_at_route_goal_anchor() -> None
     assert campsite["return_lateral_transition_tolerance_m"] == 0.02
     assert campsite["return_lateral_hysteresis_m"] == 0.10
     assert campsite["return_steering_settle_s"] == 1.20
-    assert campsite["entry_yaw_alignment_timeout_s"] == 15.0
+    # HJ_261110 - Raised with obstacle-hold pausing.
+    assert campsite["entry_yaw_alignment_timeout_s"] == 30.0
+    assert campsite["crab_timeout_margin_s"] == 20.0
     assert "automaticCrabEntryAlignmentTimedOut(" in source
     assert "automatic crab entry yaw alignment timeout" in source
 

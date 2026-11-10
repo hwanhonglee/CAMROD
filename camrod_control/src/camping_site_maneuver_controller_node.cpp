@@ -36,6 +36,7 @@
 #include "camrod_control/control_diagnostics.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
+#include "camrod_control/safety_hold_paused_timer.hpp"
 #include "camrod_control/voice_announcement_gate.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
@@ -362,6 +363,12 @@ public:
         {"/planning/follow_path/_action/cancel_goal",
          "/planning/navigate_to_pose/_action/cancel_goal"});
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 2.0);
+    // HJ_261110 - Site motion timeouts pause while the safety gate holds for
+    // an obstacle/route stop, so a long stop no longer ends in ERROR.
+    safety_gate_status_topic_ = declare_parameter<std::string>(
+        "safety_gate_status_topic", "/control/cmd_vel_safety_gate/status");
+    safety_gate_status_max_age_s_ = std::abs(
+        declare_parameter<double>("safety_gate_status_max_age_s", 1.5));
     route_goal_reached_distance_m_ = std::abs(
         declare_parameter<double>("route_goal_reached_distance_m", 0.9));
     adopt_site_arrival_distance_m_ = std::abs(
@@ -381,6 +388,15 @@ public:
         create_publisher<avg_msgs::msg::AvgTwist>(command_topic_, 10);
     status_publisher_ =
         create_publisher<avg_msgs::msg::ModuleState>(status_topic_, 10);
+    safety_gate_status_subscription_ =
+        create_subscription<avg_msgs::msg::ModuleState>(
+            safety_gate_status_topic_, 10,
+            [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
+              gate_obstacle_hold_ =
+                  camrod_control::gateStatusIndicatesObstacleHold(
+                      message->operating_state, message->message);
+              last_gate_status_time_ = now();
+            });
     diagnostics_publisher_ =
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
             diagnostics_topic_, 10);
@@ -502,6 +518,7 @@ public:
         });
 
     phase_start_time_ = now();
+    phase_timer_.restart(phase_start_time_.seconds());
     loadCampingSites();
     control_timer_ = create_wall_timer(
         std::chrono::duration<double>(1.0 / control_rate_hz_),
@@ -2204,6 +2221,7 @@ private:
                 const std::string &detail) {
     phase_ = phase;
     phase_start_time_ = now();
+    phase_timer_.restart(phase_start_time_.seconds());
     yaw_alignment_settling_.reset();
     return_lanelet_handoff_candidate_ = false;
     return_lanelet_handoff_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -2258,6 +2276,13 @@ private:
                 phaseName(phase_).c_str(), detail.c_str());
     publishServiceState(detail);
     publishStatus(true);
+  }
+
+  bool gateObstacleHoldActive() const {
+    // A stale gate status never pauses a timeout.
+    return gate_obstacle_hold_ && last_gate_status_time_.nanoseconds() > 0 &&
+           (now() - last_gate_status_time_).seconds() <=
+               safety_gate_status_max_age_s_;
   }
 
   void setError(const std::string &detail) {
@@ -2559,6 +2584,17 @@ private:
 
   void onTimer() {
     const double elapsed = (now() - phase_start_time_).seconds();
+    // HJ_261110 - Motion timeouts use time not spent in a gate obstacle hold.
+    // Waits (unload, recall clearance) keep the wall-clock elapsed.
+    const bool obstacle_hold = gateObstacleHoldActive();
+    phase_timer_.observe(now().seconds(), obstacle_hold);
+    const double motion_elapsed = phase_timer_.activeElapsed(now().seconds());
+    if (obstacle_hold && motionPhaseRequiresPose()) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "%s timeout paused by safety gate obstacle hold (paused %.0fs)",
+          phaseName(phase_).c_str(), phase_timer_.pausedSeconds());
+    }
     recall_clearance_voice_gate_.tick(now().seconds());
     requestNav2CancelForSitePhase(false);
     // HH_260824 - Never let yawFromPose's legacy numeric fallback turn a zero,
@@ -2573,16 +2609,16 @@ private:
     if (!battery_urgent_return_source_.empty() &&
         (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
          phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw) &&
-        elapsed > crab_return_timeout_s_) {
+        motion_elapsed > crab_return_timeout_s_) {
       setError("battery urgent return yaw alignment timeout");
       return;
     }
     if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw &&
         camrod_control::automaticCrabEntryAlignmentTimedOut(
-            entry_yaw_alignment_for_crab_, elapsed,
+            entry_yaw_alignment_for_crab_, motion_elapsed,
             entry_yaw_alignment_timeout_s_)) {
       setError("automatic crab entry yaw alignment timeout after " +
-               fixed(elapsed, 1) + "s");
+               fixed(motion_elapsed, 1) + "s");
       publishStatus(false);
       return;
     }
@@ -2618,7 +2654,7 @@ private:
         target_yaw_ = camrod_control::normalizeAngle(entry_target_yaw_ + M_PI);
         setPhase(CampingSiteManeuverPhase::kRotate180,
                  "reverse entry pose reached");
-      } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
+      } else if (motion_elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
         setError("reverse entry timeout before reaching site target");
       } else {
         publishReverseAlongAxis(entry_target_yaw_, entry_line_origin_x_,
@@ -2637,7 +2673,7 @@ private:
           setPhase(CampingSiteManeuverPhase::kRotate180,
                    "crab entry pose reached");
         }
-      } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
+      } else if (motion_elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
         setError("crab entry timeout before reaching site offset");
       } else {
         publishCrab(crab_direction_);
@@ -2732,7 +2768,7 @@ private:
         setPhase(CampingSiteManeuverPhase::kDone,
                  "live lanelet pose unavailable; exact-anchor fallback reached");
         publishReturnRequest("done_exact_anchor_fallback");
-      } else if (elapsed >
+      } else if (motion_elapsed >
                  crab_duration_s_ + reverse_return_timeout_margin_s_) {
         setError("reverse return timeout before reaching live lanelet or fallback anchor");
       } else {
@@ -2771,7 +2807,7 @@ private:
                        fixed(return_error) + "m");
           publishReturnRequest("done_current_pose_after_lateral_exit");
         }
-      } else if (elapsed > crab_return_timeout_s_) {
+      } else if (motion_elapsed > crab_return_timeout_s_) {
         setError("crab return timeout before completing lateral road exit");
       } else {
         publishCrabReturnToAnchor();
@@ -2943,6 +2979,13 @@ private:
   double nav2_cancel_period_s_{0.5};
   std::vector<std::string> nav2_cancel_action_topics_;
   double pose_timeout_s_{2.0};
+  camrod_control::SafetyHoldPausedTimer phase_timer_;
+  std::string safety_gate_status_topic_;
+  double safety_gate_status_max_age_s_{1.5};
+  bool gate_obstacle_hold_{false};
+  rclcpp::Time last_gate_status_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr
+      safety_gate_status_subscription_;
   double route_goal_reached_distance_m_{0.9};
   double adopt_site_arrival_distance_m_{3.0};
   double site_pose_reached_distance_m_{0.60};

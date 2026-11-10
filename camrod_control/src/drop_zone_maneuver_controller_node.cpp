@@ -147,6 +147,11 @@ public:
         "automatically_select_reverse_approach_yaw", false);
     yaw_tolerance_deg_ =
         std::abs(declare_parameter<double>("yaw_tolerance_deg", 5.0));
+    // HJ_261110 - Road-exit alignment only: noisy GNSS heading kept the 5 deg
+    // settle window from latching, delaying the site goal by 10 s or more.
+    // Parking alignment keeps yaw_tolerance_deg.
+    exit_yaw_tolerance_deg_ =
+        std::abs(declare_parameter<double>("exit_yaw_tolerance_deg", 10.0));
     yaw_proportional_gain_ =
         declare_parameter<double>("yaw_proportional_gain", 1.2);
     maximum_angular_speed_radps_ = std::abs(
@@ -757,7 +762,11 @@ private:
     phase_ = phase;
     phase_start_time_ = now();
     phase_timer_.restart(phase_start_time_.seconds());
-    yaw_alignment_settling_.reset();
+    // setConfig also resets the settling state.
+    yaw_alignment_settling_.setConfig(camrod_control::YawAlignmentSettlingConfig{
+        phase_ == DropZoneManeuverPhase::kAlignExitYaw ? exit_yaw_tolerance_deg_
+                                                       : yaw_tolerance_deg_,
+        yaw_settle_hold_s_, yaw_settle_max_rate_degps_});
     RCLCPP_INFO(get_logger(), "drop_zone_maneuver_controller %s: %s",
                 phaseName(phase_).c_str(), detail.c_str());
     if (phase_ == DropZoneManeuverPhase::kExitStraight ||
@@ -1244,6 +1253,7 @@ private:
   bool station_yaw_represents_reverse_axis_{true};
   bool automatically_select_reverse_approach_yaw_{false};
   double yaw_tolerance_deg_{5.0};
+  double exit_yaw_tolerance_deg_{10.0};
   double yaw_proportional_gain_{1.2};
   double maximum_angular_speed_radps_{0.35};
   double yaw_settle_hold_s_{1.0};

@@ -33,6 +33,8 @@ extern "C" {
 #include <apriltag/apriltag.h>
 #include <apriltag/tag36h11.h>
 #include <apriltag/tagStandard41h12.h>
+
+#include "camrod_perception/apriltag_search_policy.hpp"
 }
 
 namespace camrod::perception
@@ -67,6 +69,12 @@ public:
     roi_scale_ = declare_parameter<double>("roi_scale", 3.0);
     roi_full_search_interval_ =
       declare_parameter<int>("roi_full_search_interval", 30);
+    // HJ_261110 - CPU budget: decimated full-frame searches and strided idle
+    // frames while no tag is tracked; ROI tracking stays every frame.
+    full_search_quad_decimate_ =
+      declare_parameter<double>("full_search_quad_decimate", 2.0);
+    search_policy_ = camrod_perception::AprilTagSearchPolicy(
+      static_cast<int>(declare_parameter<int>("idle_frame_stride", 2)));
 
     // HH_260720 - Initialize the selected AprilTag family.
     if (tag_family_ == "tag36h11") {
@@ -121,8 +129,10 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "AprilTag parking detector ready: family=%s target_id=%d size=%.3fm decimate=%.1f",
-      tag_family_.c_str(), target_tag_id_, tag_size_m_, quad_decimate_);
+      "AprilTag parking detector ready: family=%s target_id=%d size=%.3fm decimate=%.1f "
+      "full_search_decimate=%.1f idle_frame_stride=%d threads=%d",
+      tag_family_.c_str(), target_tag_id_, tag_size_m_, quad_decimate_,
+      full_search_quad_decimate_, search_policy_.idleFrameStride(), n_threads_);
   }
 
   ~AprilTagParkingDetectorNode() override
@@ -167,6 +177,10 @@ private:
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
         "waiting for rear CameraInfo; skipping detection");
+      return;
+    }
+    // HJ_261110 - Skip strided idle frames before any image conversion.
+    if (!search_policy_.processFrame(roi_valid_)) {
       return;
     }
 
@@ -359,6 +373,8 @@ private:
   zarray_t * detectInRegion(const cv::Mat & gray, const cv::Rect & roi)
   {
     cv::Mat view = (roi.area() > 0) ? gray(roi) : gray;
+    td_->quad_decimate = camrod_perception::quadDecimateFor(
+      roi.area() > 0, quad_decimate_, full_search_quad_decimate_);
     // HH_260720 - Positional aggregate initialization supports apriltag's const dimensions in C++17.
     image_u8_t im{
       view.cols,
@@ -467,6 +483,8 @@ private:
   int debug_jpeg_quality_{80};
   double roi_scale_{3.0};
   int roi_full_search_interval_{30};
+  double full_search_quad_decimate_{2.0};
+  camrod_perception::AprilTagSearchPolicy search_policy_;
 
   // HH_260720 - ROI tracking state.
   cv::Rect roi_;

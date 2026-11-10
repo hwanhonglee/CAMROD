@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <osm generator="VMB">
-  <MetaInfo format_version="1" map_version="28" validation_version="1"/>
+  <MetaInfo format_version="1" map_version="29" validation_version="1"/>
   <node id="1" lat="36.84343425656" lon="128.09267085836">
     <tag k="local_x" v="9.4738"/>
     <tag k="local_y" v="-15.4685"/>
@@ -8221,29 +8221,29 @@
     <tag k="local_y" v="39.1287"/>
     <tag k="ele" v="-34.0712"/>
   </node>
-  <node id="7162" lat="36.84345253272" lon="128.09279560526">
-    <tag k="local_x" v="20.596"/>
-    <tag k="local_y" v="-13.4411"/>
+  <node id="7162" lat="36.84343376865" lon="128.09281574245">
+    <tag k="local_x" v="22.3914"/>
+    <tag k="local_y" v="-15.5226"/>
     <tag k="ele" v="-30.8293"/>
   </node>
-  <node id="7163" lat="36.84347172759" lon="128.09282593233">
-    <tag k="local_x" v="23.2999"/>
-    <tag k="local_y" v="-11.3118"/>
+  <node id="7163" lat="36.84345296352" lon="128.09284606952">
+    <tag k="local_x" v="25.0953"/>
+    <tag k="local_y" v="-13.3933"/>
     <tag k="ele" v="-31.3255"/>
   </node>
-  <node id="7165" lat="36.84343727796" lon="128.09286110791">
-    <tag k="local_x" v="26.4361"/>
-    <tag k="local_y" v="-15.1333"/>
+  <node id="7165" lat="36.84342101093" lon="128.09288292076">
+    <tag k="local_x" v="28.3809"/>
+    <tag k="local_y" v="-16.9378"/>
     <tag k="ele" v="-31.0271"/>
   </node>
-  <node id="7166" lat="36.84342083977" lon="128.09283703939">
-    <tag k="local_x" v="24.2902"/>
-    <tag k="local_y" v="-16.9568"/>
+  <node id="7166" lat="36.84340207569" lon="128.09285717656">
+    <tag k="local_x" v="26.0856"/>
+    <tag k="local_y" v="-19.0383"/>
     <tag k="ele" v="-30.9383"/>
   </node>
-  <node id="7167" lat="36.84345247233" lon="128.09279595856">
-    <tag k="local_x" v="20.6275"/>
-    <tag k="local_y" v="-13.4478"/>
+  <node id="7167" lat="36.84343370825" lon="128.09281609575">
+    <tag k="local_x" v="22.4229"/>
+    <tag k="local_y" v="-15.5293"/>
     <tag k="ele" v="-30.8222"/>
   </node>
   <way id="28">
@@ -11875,9 +11875,9 @@
     <member type="way" role="outer" ref="7164"/>
     <tag k="type" v="multipolygon"/>
     <tag k="subtype" v="turnaround_area"/>
-    <tag k="yaw_deg" v="-51.2"/>
-    <tag k="service_x" v="23.843"/>
-    <tag k="service_y" v="-14.215"/>
+    <tag k="yaw_deg" v="-45.3"/>
+    <tag k="service_x" v="25.708"/>
+    <tag k="service_y" v="-16.271"/>
     <tag k="service_mode" v="turnaround"/>
     <tag k="serves" v="camping_site_11,camping_site_12,camping_site_13"/>
   </relation>

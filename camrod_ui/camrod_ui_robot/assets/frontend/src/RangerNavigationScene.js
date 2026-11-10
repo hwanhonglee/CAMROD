@@ -20,6 +20,11 @@ import { acquireNavigationGraphics, navigationGraphicsBridge } from './navigatio
 export { illustratedRoadPositions } from './navigationRoadVisuals';
 
 const WHEEL_NAMES = ['fl', 'fr', 'rl', 'rr'];
+// HJ_261110 - Cap 3D rendering at ~30 fps to cut WebKit CPU/GPU load. The
+// interval sits 2 ms under 1000/30 so 60 Hz RAF jitter still lands every 2nd
+// frame instead of slipping to every 3rd (20 fps).
+export const NAVIGATION_MAX_FPS = 30;
+export const NAVIGATION_FRAME_MIN_INTERVAL_MS = 1000 / NAVIGATION_MAX_FPS - 2;
 // HH_261002 - Display-only paint width, not a measured road width or safety margin.
 export const LANE_BOUNDARY_WIDTH_M = 0.10;
 
@@ -615,8 +620,8 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       const now = performance.now();
       if (disposed) return;
       animationId = requestAnimationFrame(tick);
-      if (now - lastFrame < 1000 / 60 || document.hidden) return;
-      const delta = lastFrame ? clamp((now - lastFrame) / 1000, 0, 0.1) : 1 / 60;
+      if (now - lastFrame < NAVIGATION_FRAME_MIN_INTERVAL_MS || document.hidden) return;
+      const delta = lastFrame ? clamp((now - lastFrame) / 1000, 0, 0.1) : 1 / NAVIGATION_MAX_FPS;
       lastFrame = now;
       const fresh = Boolean(poseIsFresh(sample, now - receivedAt));
       const moving = Boolean(motionMayAnimate(sample, now - receivedAt));
