@@ -10,16 +10,22 @@
     base_frame_id: "robot_center_link"
     output_frame_id: "map"
     # HJ_261105 - Guard box in robot_center_link [m]; x_min and z_min are exclusive.
-    # x: body front (robot_params body_extents.front) .. +0.30 m ahead.
-    # y: -body right .. +body left.
-    # z: body bottom + 0.05 m ground-segmentation inlier tolerance .. body top.
-    # Validate low objects/slopes on hardware before lowering z_min.
+    # HJ_261110 - LiDAR-relative box: 0.30 m ahead of, left/right of, and below
+    # the LiDAR (mount x 0.76336, z 0.59538, no rotation). x starts at the body
+    # front and z keeps the body top. Starts ~0.45 m above ground; objects lower
+    # than that or within ~0.24 m of the body side edges are not seen.
+    # lidar_link equivalents: x [-0.05499, 0.30], y [-0.30, 0.30], z [-0.30, 0.34650]
     front_guard_x_min_m: 0.70837
-    front_guard_x_max_m: 1.00837
-    front_guard_y_min_m: -0.53495
-    front_guard_y_max_m: 0.53505
-    front_guard_z_min_m: -0.10275
+    front_guard_x_max_m: 1.06336
+    front_guard_y_min_m: -0.30000
+    front_guard_y_max_m: 0.30000
+    front_guard_z_min_m: 0.29538
     front_guard_z_max_m: 0.94188
+    # HJ_261110 - LiDAR spike rejection: a scan counts only with >= min_points
+    # in-box points (after the 3 cm voxel filter), and the stop starts only after
+    # min_consecutive_scans such scans in a row (~0.1 s extra at 10 Hz for 2).
+    front_guard_min_points: 5
+    front_guard_min_consecutive_scans: 2
     resolution: 0.05
     width: 80
     height: 80

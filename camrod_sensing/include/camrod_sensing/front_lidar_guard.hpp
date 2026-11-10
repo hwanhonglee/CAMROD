@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace camrod::sensing
@@ -38,5 +39,56 @@ inline bool isFrontLidarGuardPoint(
          y >= config.y_min_m - epsilon && y <= config.y_max_m + epsilon &&
          z > config.z_min_m + epsilon && z <= config.z_max_m + epsilon;
 }
+
+// HJ_261110 - LiDAR noise rejection. A scan counts as an obstacle only when at
+// least min_points in-box points are seen, and the guard is confirmed only after
+// min_consecutive_scans such scans in a row. Points come after the 3 cm voxel
+// filter, so N points are N distinct voxels. The publish timer can see the
+// same cloud more than once; a repeated stamp returns the previous decision
+// without counting it again. Defaults of 1/1 keep the single-point behavior.
+struct FrontLidarGuardNoiseConfig
+{
+  int min_points{1};
+  int min_consecutive_scans{1};
+};
+
+inline bool validFrontLidarGuardNoiseConfig(const FrontLidarGuardNoiseConfig & config)
+{
+  return config.min_points >= 1 && config.min_consecutive_scans >= 1;
+}
+
+class FrontLidarGuardNoiseFilter
+{
+public:
+  explicit FrontLidarGuardNoiseFilter(const FrontLidarGuardNoiseConfig & config = {})
+  : config_(config) {}
+
+  bool update(const std::int64_t scan_stamp_ns, const int points_in_box)
+  {
+    if (has_scan_ && scan_stamp_ns == last_scan_stamp_ns_) {
+      return confirmed_;
+    }
+    has_scan_ = true;
+    last_scan_stamp_ns_ = scan_stamp_ns;
+    if (points_in_box >= config_.min_points) {
+      if (consecutive_scans_ < config_.min_consecutive_scans) {
+        ++consecutive_scans_;
+      }
+    } else {
+      consecutive_scans_ = 0;
+    }
+    confirmed_ = consecutive_scans_ >= config_.min_consecutive_scans;
+    return confirmed_;
+  }
+
+  int consecutiveScans() const {return consecutive_scans_;}
+
+private:
+  FrontLidarGuardNoiseConfig config_;
+  bool has_scan_{false};
+  std::int64_t last_scan_stamp_ns_{0};
+  int consecutive_scans_{0};
+  bool confirmed_{false};
+};
 
 }  // namespace camrod::sensing

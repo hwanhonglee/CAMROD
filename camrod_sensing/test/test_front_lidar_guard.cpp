@@ -62,3 +62,42 @@ TEST(FrontLidarGuard, RejectsInvertedOrNonFiniteBox)
   config.x_min_m = 0.0;
   EXPECT_FALSE(camrod::sensing::validFrontLidarGuardConfig(config));
 }
+
+// HJ_261110 - Isolated LiDAR spikes do not confirm the guard.
+TEST(FrontLidarGuardNoiseFilter, NeedsMinPointsOnConsecutiveScans)
+{
+  camrod::sensing::FrontLidarGuardNoiseFilter filter({5, 2});
+  EXPECT_FALSE(filter.update(1, 4));  // too few points
+  EXPECT_FALSE(filter.update(2, 5));  // first qualifying scan
+  EXPECT_TRUE(filter.update(3, 6));   // second in a row
+  EXPECT_TRUE(filter.update(4, 5));
+  EXPECT_FALSE(filter.update(5, 1));  // a sparse scan resets the run
+  EXPECT_FALSE(filter.update(6, 9));
+  EXPECT_TRUE(filter.update(7, 9));
+}
+
+TEST(FrontLidarGuardNoiseFilter, SingleScanSpikeNeverConfirms)
+{
+  camrod::sensing::FrontLidarGuardNoiseFilter filter({5, 2});
+  for (std::int64_t stamp = 1; stamp <= 20; ++stamp) {
+    EXPECT_FALSE(filter.update(stamp, stamp % 2 == 0 ? 50 : 0));
+  }
+}
+
+TEST(FrontLidarGuardNoiseFilter, RepeatedStampIsNotCountedTwice)
+{
+  camrod::sensing::FrontLidarGuardNoiseFilter filter({1, 2});
+  EXPECT_FALSE(filter.update(10, 3));
+  EXPECT_FALSE(filter.update(10, 3));  // same cloud republished by the timer
+  EXPECT_TRUE(filter.update(11, 3));
+  EXPECT_TRUE(filter.update(11, 0));   // repeated stamp keeps the decision
+}
+
+TEST(FrontLidarGuardNoiseFilter, DefaultsKeepSinglePointBehavior)
+{
+  camrod::sensing::FrontLidarGuardNoiseFilter filter;
+  EXPECT_TRUE(filter.update(1, 1));
+  EXPECT_FALSE(filter.update(2, 0));
+  EXPECT_FALSE(camrod::sensing::validFrontLidarGuardNoiseConfig({0, 1}));
+  EXPECT_FALSE(camrod::sensing::validFrontLidarGuardNoiseConfig({1, 0}));
+}

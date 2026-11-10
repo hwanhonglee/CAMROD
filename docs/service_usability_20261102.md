@@ -175,7 +175,7 @@ CARLA·실제 로봇의 동영상, 실제 제동 거리, 사람/물체의 실제
 radar 거리 조절은 두 `cost_grid.yaml`의 `stop_candidate_max_ranges_m`에서 한다.
 순서는 FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR이고 단위는 m다.
 센서면 기준이므로 범퍼 여유 거리와 혼동하면 안 된다. 변경 후 설치 반영·노드 재시작이 필요하다.
-LiDAR 보조 범위는 `front_guard.yaml`의 `front_guard_{x,y,z}_{min,max}_m`(robot_center_link 기준 상자)이다. 기본값은 차체 전면부터 0.30 m 앞까지다.
+LiDAR 보조 범위는 `front_guard.yaml`의 `front_guard_{x,y,z}_{min,max}_m`(robot_center_link 기준 상자)이다. 현재 값은 LiDAR 기준 앞 0.30 m(차체 전면부터), 좌우 ±0.30 m, LiDAR 아래 0.30 m(지면 위 약 0.45 m)부터 차체 상단까지다. LiDAR 튀는 점은 `front_guard_min_points`(5)와 `front_guard_min_consecutive_scans`(2)로 거른다. 상자 안 점이 5개 이상인 scan이 2번 연속이어야 정지한다. bringup에서 `enable_lidar_front_guard: true`로 켜지고 `/planning/cost_grid/inflation`에도 합쳐진다.
 
 실행 비교 재현은 `camrod_sensing/test/test_nearfield_comparison_ros.py`,
 시각자료 재생성은 증빙 폴더의 `render_nearfield_comparison.py`를 사용한다.

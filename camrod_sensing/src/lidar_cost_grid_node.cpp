@@ -52,6 +52,15 @@ public:
     if (front_guard_mode_ && !validFrontLidarGuardConfig(front_guard_)) {
       throw std::invalid_argument("invalid front LiDAR guard x/y/z min/max bounds");
     }
+    // HJ_261110 - Reject isolated LiDAR spikes: point count per scan + consecutive scans.
+    FrontLidarGuardNoiseConfig guard_noise;
+    guard_noise.min_points = static_cast<int>(declare_parameter<int>("front_guard_min_points", 1));
+    guard_noise.min_consecutive_scans =
+      static_cast<int>(declare_parameter<int>("front_guard_min_consecutive_scans", 1));
+    if (front_guard_mode_ && !validFrontLidarGuardNoiseConfig(guard_noise)) {
+      throw std::invalid_argument("front guard min_points and min_consecutive_scans must be >= 1");
+    }
+    front_guard_noise_filter_ = FrontLidarGuardNoiseFilter(guard_noise);
     // HH_260421 - Use filtered lidar points as default cost-grid input.
     input_topic_ = declare_parameter<std::string>(
         "input_topic", "/sensing/lidar/points_filtered");
@@ -531,6 +540,7 @@ private:
                                    std::max(1, dedup_height)),
           -1);
 
+      int guard_points_in_box = 0;
       for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
         const double x = static_cast<double>(*iter_x);
         const double y = static_cast<double>(*iter_y);
@@ -551,6 +561,7 @@ private:
           if (!isFrontLidarGuardPoint(body_point.x(), body_point.y(), body_point.z(), front_guard_)) {
             continue;
           }
+          ++guard_points_in_box;
         }
         const tf2::Vector3 p_output = cloud_tf * p_sensor;
         const double distance = std::sqrt(
@@ -571,6 +582,16 @@ private:
         cell_costs[cell_idx] = std::max(cell_costs[cell_idx], value);
       }
 
+      if (front_guard_mode_) {
+        // HJ_261110 - Unconfirmed hits publish a fresh clear grid, so stale-input
+        // stops still apply while isolated spikes do not stop the robot.
+        const auto & stamp = input.cloud->header.stamp;
+        const std::int64_t stamp_ns =
+          static_cast<std::int64_t>(stamp.sec) * 1000000000LL + stamp.nanosec;
+        if (!front_guard_noise_filter_.update(stamp_ns, guard_points_in_box)) {
+          return has_finite_point;
+        }
+      }
       for (int cy = 0; cy < dedup_height; ++cy) {
         for (int cx = 0; cx < dedup_width; ++cx) {
           const int value =
@@ -752,6 +773,7 @@ private:
   bool front_guard_mode_{false};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr front_guard_param_callback_;
   FrontLidarGuardConfig front_guard_;
+  FrontLidarGuardNoiseFilter front_guard_noise_filter_;
   std::vector<std::string> input_topics_;
   std::vector<std::string> extra_input_topics_;
   bool raw_lidar_cost_enabled_{true};

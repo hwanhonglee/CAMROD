@@ -60,6 +60,9 @@
       - "/map/cost_grid/lanelet"
       - "/sensing/cost_grid/radar"
       - "/planning/cost_grid/global_path"
+      # HJ_261110 - Raw-LiDAR front guard box (shown on the cost grid map).
+      # A stale or absent guard grid is skipped, never painted.
+      - "/sensing/cost_grid/lidar_front_guard"
 
     # HH_260422 - Per-input staleness limit. lanelet/global_path update slowly;
     #   sensor grids update at ~10-20 Hz. Must match order of input_topics above.
@@ -67,4 +70,5 @@
       - 5.0    # lanelet: static map, rarely changes
       - 0.50   # radar cost_grid
       - 10.0   # global_path: infrequent replanning
+      - 0.50   # lidar_front_guard (10 Hz producer)
     max_message_age_s: 1.50
