@@ -11,6 +11,12 @@
     # HH_260723 - Use the field-selected JECH RTCM 3.2 stream in both package and bringup mirrors.
     mountpoint: "JECH-RTCM32"
     # Inactive legacy alternative: mountpoint: "CNJU-RTCM32"
+    # 261111 - Failover order after `mountpoint` (same host and account). Only
+    # one station is used at a time: when the current one rejects the request
+    # or stops streaming for rtcm_timeout_seconds, the client moves to the next
+    # and stays there. Each switch restarts RTK convergence (FLOAT for a while),
+    # so list only stations this account can use, nearest first. [] disables it.
+    fallback_mountpoints: ["CNJU-RTCM32"]
     username: "hwanhong57@gmail.com"
     password: "gnss"
 

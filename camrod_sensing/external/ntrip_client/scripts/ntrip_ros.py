@@ -26,6 +26,9 @@ class NTRIPRos(NTRIPRosBase):
                 ('key', 'None'),
                 ('ca_cert', 'None'),
                 ('rtcm_timeout_seconds', NTRIPClient.DEFAULT_RTCM_TIMEOUT_SECONDS),
+                # 261111 - Same host/credentials; tried in order after 'mountpoint'.
+                # [''] keeps the parameter typed as a string array when unset.
+                ('fallback_mountpoints', ['']),
             ]
         )
 
@@ -63,7 +66,8 @@ class NTRIPRos(NTRIPRosBase):
             logerr=self.get_logger().error,
             logwarn=self.get_logger().warning,
             loginfo=self.get_logger().info,
-            logdebug=self.get_logger().debug
+            logdebug=self.get_logger().debug,
+            fallback_mountpoints=[m for m in self.get_parameter('fallback_mountpoints').value if m],
         )
 
         # Get some SSL parameters for the NTRIP client

@@ -27,13 +27,24 @@ class NTRIPClient(NTRIPBase):
   # Public constants
   DEFAULT_RTCM_TIMEOUT_SECONDS = 4
 
-  def __init__(self, host, port, mountpoint, ntrip_version, username, password, logerr=logging.error, logwarn=logging.warning, loginfo=logging.info, logdebug=logging.debug):
+  def __init__(self, host, port, mountpoint, ntrip_version, username, password, logerr=logging.error, logwarn=logging.warning, loginfo=logging.info, logdebug=logging.debug,
+               fallback_mountpoints=None):
     # Call the parent constructor
     super().__init__(logerr, logwarn, loginfo, logdebug)
 
     # Save the server info
     self._host = host
     self._port = port
+    # 261111 - Ordered mountpoint list on the same caster/account: the primary
+    # first, then fallbacks. Only one reference station is used at a time;
+    # the client moves to the next one when the current one fails, and stays
+    # there (no switch-back) because every switch restarts RTK convergence.
+    self._mountpoints = [mountpoint]
+    for candidate in fallback_mountpoints or []:
+      candidate = str(candidate).strip()
+      if candidate and candidate not in self._mountpoints:
+        self._mountpoints.append(candidate)
+    self._mountpoint_index = 0
     self._mountpoint = mountpoint
     self._ntrip_version = ntrip_version
     if username is not None and password is not None:
@@ -61,10 +72,41 @@ class NTRIPClient(NTRIPBase):
     self._first_rtcm_received = False
     self._recv_rtcm_last_packet_timestamp = 0
 
+    self._connected_at = 0.0
+    self._mountpoint_rejected = False
+
     # Public reconnect info
     self.rtcm_timeout_seconds = self.DEFAULT_RTCM_TIMEOUT_SECONDS
 
+  def _advance_mountpoint(self, reason):
+    # 261111 - Logged at error level: the GNSS launch runs NTRIP at --log-level
+    # error, and a station switch (RTK re-convergence) must be visible.
+    if len(self._mountpoints) < 2:
+      return False
+    previous = self._mountpoint
+    self._mountpoint_index = (self._mountpoint_index + 1) % len(self._mountpoints)
+    self._mountpoint = self._mountpoints[self._mountpoint_index]
+    self._logerr('NTRIP mountpoint failover: {} -> {} ({})'.format(previous, self._mountpoint, reason))
+    return True
+
   def connect(self):
+    # 261111 - Try the current mountpoint; move to the next one only when the
+    # caster answered and rejected this mountpoint. All mountpoints share one
+    # host, so an unreachable caster/network is not a reason to switch station.
+    # With a single mountpoint this is exactly the previous single attempt.
+    for attempt in range(len(self._mountpoints)):
+      if attempt > 0:
+        self.disconnect()
+        self._advance_mountpoint('previous mountpoint rejected the request')
+      self._mountpoint_rejected = False
+      if self._connect_current():
+        self._connected_at = time.time()
+        return True
+      if not self._mountpoint_rejected:
+        return False
+    return False
+
+  def _connect_current(self):
     # HH_260819 - Let getaddrinfo select IPv4 or IPv6. The wired field network
     # is IPv6-only with DNS64/NAT64, while the previous AF_INET-only socket
     # failed with ENETUNREACH even though the caster was reachable over IPv6.
@@ -125,6 +167,7 @@ class NTRIPClient(NTRIPBase):
     # Wish we could just return from the above checks, but some casters return both a success and an error in the response
     # If we received any known error, even if we received a success it should be considered a failure
     if known_error or not self._connected:
+      self._mountpoint_rejected = True
       self._logerr('Invalid response received from http://{}:{}/{}'.format(
         self._host, self._port, self._mountpoint))
       self._logerr('Response: {}'.format(response))
@@ -193,8 +236,20 @@ class NTRIPClient(NTRIPBase):
     # If it has been too long since we received an RTCM packet, reconnect
     if time.time() - self.rtcm_timeout_seconds >= self._recv_rtcm_last_packet_timestamp and self._first_rtcm_received:
       self._logerr('RTCM data not received for {} seconds, reconnecting'.format(self.rtcm_timeout_seconds))
+      # 261111 - Reconnect to the same station first: a short network drop must
+      # not move the robot to a farther station for the rest of the session.
+      # If the station itself is down, the check below moves on once the
+      # reconnected stream stays silent (or connect() moves on when rejected).
       self.reconnect()
       self._first_rtcm_received = False
+    # 261111 - A caster can accept the request (ICY 200 OK) for a station that
+    # is down and then send nothing. Move to the next station in that case.
+    elif (not self._first_rtcm_received and len(self._mountpoints) > 1
+          and time.time() - self._connected_at >= self.rtcm_timeout_seconds):
+      self._logerr('No RTCM received from {} within {} seconds of connecting'.format(
+        self._mountpoint, self.rtcm_timeout_seconds))
+      self._advance_mountpoint('no RTCM after connect')
+      self.reconnect()
 
     # Check if there is any data available on the socket
     read_sockets, _, _ = select.select([self._server_socket], [], [], 0)
