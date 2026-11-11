@@ -25,6 +25,11 @@ const WHEEL_NAMES = ['fl', 'fr', 'rl', 'rr'];
 // frame instead of slipping to every 3rd (20 fps).
 export const NAVIGATION_MAX_FPS = 30;
 export const NAVIGATION_FRAME_MIN_INTERVAL_MS = 1000 / NAVIGATION_MAX_FPS - 2;
+// 261111 - Render on demand: a frame is drawn only when the pose, camera, wheels,
+// visibility or geometry changed. A stationary view refreshes at this slow
+// interval as a safety net instead of redrawing an identical image at 30 fps.
+export const NAVIGATION_IDLE_REFRESH_MS = 1000;
+const FRAME_SIGNATURE_EPSILON = 1e-4;
 // HH_261002 - Display-only paint width, not a measured road width or safety margin.
 export const LANE_BOUNDARY_WIDTH_M = 0.10;
 
@@ -125,13 +130,29 @@ function disposeTree(root) {
   geometries.forEach((geometry) => geometry.dispose());
 }
 
+// 261111 - Telemetry repeats identical geometry between samples. Keep the existing
+// GPU buffer when nothing changed instead of re-uploading it 10-20 times a second.
+export function samePositions(current, values) {
+  if (!current || current.length !== values.length) return false;
+  for (let index = 0; index < values.length; index += 1) {
+    if (current[index] !== Math.fround(values[index])) return false;
+  }
+  return true;
+}
+
+// Returns true when the geometry was replaced (the scene needs a redraw).
 function replacePositions(object, values) {
   const previous = object.geometry;
+  if (samePositions(previous.attributes?.position?.array, values)) {
+    object.visible = values.length > 0;
+    return false;
+  }
   object.geometry = new THREE.BufferGeometry();
   object.geometry.setAttribute('position', new THREE.Float32BufferAttribute(values, 3));
   if (values.length) object.geometry.computeBoundingSphere();
   object.visible = values.length > 0;
   previous.dispose();
+  return true;
 }
 
 function applyModelSurfaceFinish(model, dark) {
@@ -283,6 +304,8 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     let cargoShown = false, orbitAngle = detailAngleRef.current;
     const loadedWrapFaces = new Set();
     let receivedAt = performance.now(), lastTargetAt = receivedAt, lastFrame = 0, lastDebug = 0, renderedFrames = 0;
+    let needsRender = true, lastRenderAt = 0;
+    const frameSignature = [], renderedSignature = [];
     let sample = latestRef.current;
     let currentPose = sample.pose ? { ...sample.pose } : null;
     let origin = { x: currentPose?.x || 0, y: currentPose?.y || 0 };
@@ -374,6 +397,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     }
 
     const resize = () => {
+      needsRender = true;
       const width = Math.max(1, host.clientWidth), height = Math.max(1, host.clientHeight);
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
@@ -396,7 +420,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       }
       const input = navigationIllustrationInput(sample);
       if (!input) {
-        if (routeWorld) { scene.remove(routeWorld); disposeTree(routeWorld); }
+        if (routeWorld) { scene.remove(routeWorld); disposeTree(routeWorld); needsRender = true; }
         routeWorld = null;
         routeWorldOrigin = null;
         routeWorldKey = '';
@@ -407,6 +431,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       if (routeKey !== routeWorldKey) {
         if (routeWorld) { scene.remove(routeWorld); disposeTree(routeWorld); }
         routeWorld = makeNavigationIllustration(input, sample.baseMap, origin, dark);
+        needsRender = true;
         routeWorldOrigin = { ...origin };
         routeWorldKey = routeKey;
         scene.add(routeWorld);
@@ -427,6 +452,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         areaWorldOrigin = { ...origin };
         areaWorldKey = key;
         if (areaWorld) scene.add(areaWorld);
+        needsRender = true;
       }
       if (areaWorld) areaWorld.position.set(areaWorldOrigin.x - origin.x, 0, origin.y - areaWorldOrigin.y);
     };
@@ -434,7 +460,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     const updateBaseMap = () => {
       updateAreas();
       if (!sample.baseMap?.valid) {
-        if (baseMapWorldKey) replacePositions(baseMapLines, []);
+        if (baseMapWorldKey) { replacePositions(baseMapLines, []); needsRender = true; }
         if (baseMapWorldKey) replacePositions(boundaryPaint, []);
         baseMapWorldKey = '';
         baseMapWorldOrigin = null;
@@ -450,6 +476,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         replacePositions(boundaryPaint, boundaryPaintPositions(sample.baseMap, origin));
         baseMapWorldOrigin = { ...origin };
         baseMapWorldKey = key;
+        needsRender = true;
       }
       // HH_261002 - Rebase a cached static map when the robot origin shifts;
       // route availability and route illustration must never clear this layer.
@@ -464,8 +491,8 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       const valid = poseIsFresh(sample);
       const nearby = (point) => Math.hypot(point[0] - sample.pose.x, point[1] - sample.pose.y) < 65;
       const path = valid ? sample.route.filter(nearby).slice(0, 256) : [];
-      replacePositions(route, buildRouteRibbon(path, origin, 0.24, 0.047));
-      replacePositions(routeHalo, buildRouteRibbon(path, origin, 0.92, 0.034));
+      if (replacePositions(route, buildRouteRibbon(path, origin, 0.24, 0.047))) needsRender = true;
+      if (replacePositions(routeHalo, buildRouteRibbon(path, origin, 0.92, 0.034))) needsRender = true;
       // HH_261001 - Synthetic demo points look like airborne dust beside the authored path.
       // Live mode still renders every bounded, received cloud point unchanged.
       const cloud = valid && !demo ? sample.points.filter(nearby).slice(0, 600) : [];
@@ -473,7 +500,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         const position = mapToThree(point, origin, 0.06);
         return position.y >= -2 && position.y <= 5 ? [position.x, position.y, position.z] : [];
       });
-      replacePositions(points, pointPositions);
+      if (replacePositions(points, pointPositions)) needsRender = true;
       const seen = new Set();
       (valid && sample.perceptionReady ? sample.objects.slice(0, 32) : []).forEach((object) => {
         const point = [object.x, object.y, object.z];
@@ -493,9 +520,12 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         }
         visual.position.set(position.x, position.y, position.z);
         seen.add(key);
+        needsRender = true;
       });
       objectVisuals.forEach((visual, key) => {
-        if (!seen.has(key)) { detections.remove(visual); disposeTree(visual); objectVisuals.delete(key); }
+        if (!seen.has(key)) {
+          detections.remove(visual); disposeTree(visual); objectVisuals.delete(key); needsRender = true;
+        }
       });
       updateBaseMap();
       updateNavigationIllustration();
@@ -516,6 +546,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         const reset = !previousFresh || !currentPose || currentPose.frame_id !== newPose.frame_id
           || Math.hypot(newPose.x - currentPose.x, newPose.y - currentPose.y) > 2;
         if (reset) {
+          needsRender = true;
           currentPose = newPose;
           origin = { x: newPose.x, y: newPose.y };
           cameraHeading = newPose.yaw;
@@ -572,6 +603,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         robot.add(wheelContact);
       });
       setModelStatus('ready'); renderer.domElement.dataset.modelStatus = 'ready';
+      needsRender = true;
       const wrapGroups = [
         { names: ['wrap_left', 'wrap_right'], url: wrapUrl },
         { names: ['wrap_front'], url: frontWrapUrl },
@@ -600,7 +632,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
             loadedWrapFaces.add(surface.name);
           });
           if (!assigned) texture.dispose();
-          else setWrapVisible(true);
+          else { setWrapVisible(true); needsRender = true; }
         }, undefined, () => { /* HH_261001 - Missing art leaves the actual white body visible. */ });
       });
     }, undefined, () => {
@@ -671,6 +703,23 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       routeHalo.visible = route.visible;
       points.visible = fresh && points.geometry.attributes.position.count > 0;
       detections.visible = fresh && sample.perceptionReady && objectVisuals.size > 0;
+      // 261111 - Skip the draw (and label projection) when this frame would be
+      // identical to the last one drawn. Everything above is cheap state math.
+      frameSignature.length = 0;
+      frameSignature.push(robot.position.x, robot.position.z, robot.rotation.y,
+        camera.position.x, camera.position.y, camera.position.z,
+        camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w,
+        floor.position.x, floor.position.z, fresh ? 1 : 0, moving ? 1 : 0,
+        route.visible ? 1 : 0, points.visible ? 1 : 0, detections.visible ? 1 : 0,
+        baseMapLines.visible ? 1 : 0, boundaryPaint.visible ? 1 : 0);
+      wheels.forEach((wheel) => frameSignature.push(wheel.steerRad, wheel.rollRad));
+      const unchanged = !needsRender && frameSignature.length === renderedSignature.length
+        && frameSignature.every((value, index) => Math.abs(value - renderedSignature[index]) <= FRAME_SIGNATURE_EPSILON);
+      if (unchanged && now - lastRenderAt < NAVIGATION_IDLE_REFRESH_MS) return;
+      needsRender = false;
+      lastRenderAt = now;
+      renderedSignature.length = 0;
+      renderedSignature.push(...frameSignature);
       renderer.render(scene, camera);
       renderedFrames += 1;
       let visibleObjectLabels = 0;
