@@ -788,6 +788,10 @@ def generate_launch_description():
         ('localization_enable_filter', cfg_get(launch_cfg, 'localization/enable_filter', True), 'Enable localization filter launch'),
         ('localization_enable_monitor', cfg_get(launch_cfg, 'localization/enable_monitor', True), 'Enable localization monitor launch'),
         ('localization_enable_map_helper', cfg_get(launch_cfg, 'localization/enable_map_helper', True), 'Enable localization map_helper launch'),
+        # HJ_261112 - LiDAR NDT localization (camrod_localization/external/ndt_localization_cpp) into the EKF.
+        ('localization_enable_ndt', cfg_get(launch_cfg, 'localization/enable_ndt', False), 'Enable LiDAR NDT localization (EKF pose2)'),
+        ('localization_ndt_map_pcd', cfg_get(launch_cfg, 'localization/ndt_map_pcd', ''), 'NDT map PCD in the map_info frame'),
+        ('localization_enable_ndt_rviz', cfg_get(launch_cfg, 'localization/enable_ndt_rviz', False), 'Separate RViz: NDT map + aligned LiDAR scan'),
 
         # HH_260604 - Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
@@ -2375,6 +2379,9 @@ def generate_launch_description():
         'enable_filter': lc['localization_enable_filter'],
         'enable_monitor': lc['localization_enable_monitor'],
         'enable_map_helper': lc['localization_enable_map_helper'],
+        'enable_ndt': lc['localization_enable_ndt'],
+        'ndt_map_pcd': lc['localization_ndt_map_pcd'],
+        'enable_ndt_rviz': lc['localization_enable_ndt_rviz'],
         # HH_260713 - Map and GNSS projection must consume the exact same map-info
         # file.  Falling back inside camrod_localization can silently select the
         # package copy while full bringup loads its bringup-local map copy.

@@ -80,3 +80,7 @@ camrod_sensing/file/radar_driver/LINUX/driver/*.mod.c
 camrod_sensing/file/radar_driver/LINUX/driver/.*.cmd
 camrod_sensing/file/radar_driver/LINUX/driver/Module.symvers
 camrod_sensing/file/radar_driver/LINUX/driver/modules.order
+
+# HJ_261112 - NDT localization map (401 MB, over GitHub's 100 MB file limit): kept next to the lanelet2 maps,
+# copied to the robot separately (bringup localization/ndt_map_pcd).
+/pointcloud_map.pcd

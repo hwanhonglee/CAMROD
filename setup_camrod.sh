@@ -8,6 +8,7 @@
 #   ./setup_camrod.sh             # install deps + clone missing externals + rosdep (safe, idempotent)
 #   ./setup_camrod.sh --update    # also pull latest for each external (REWRITES working copies)
 #   ./setup_camrod.sh --no-rosdep # skip rosdep after explicit system-package + external setup
+#   ./setup_camrod.sh --no-ndt    # skip the pinned Autoware NDT apt packages (LiDAR NDT localization)
 #
 # WARN: --update overwrites any local changes inside external/ directories.
 # HH_260630 - setup covers the current split runtime:
@@ -98,10 +99,12 @@ SRC_ROOT="${WS_ROOT}/src"
 
 UPDATE=0
 DO_ROSDEP=1
+DO_NDT=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --update)      UPDATE=1; shift ;;
     --no-rosdep)   DO_ROSDEP=0; shift ;;
+    --no-ndt)      DO_NDT=0; shift ;;
     -h|--help)
       sed -n '2,20p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \?//'
       exit 0 ;;
@@ -291,6 +294,96 @@ if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
     fi
   fi
   unset _arch
+fi
+
+# ── LiDAR NDT localization: Autoware NDT apt binaries, version-pinned ───────
+# HJ_261112 - camrod_localization/external/ndt_localization_cpp runs autoware_ndt_scan_matcher +
+# autoware_map_loader. They come from the ROS Humble apt repo (amd64 + arm64, Ubuntu 22.04 / JetPack 6)
+# instead of ~30 source packages. Versions are pinned (same as the validated source build: core 1.9.0,
+# msgs 1.13.0, internal msgs 1.16.0, lanelet2_extension 1.2.0) and held, so neither `apt upgrade` nor the
+# rosdep step below moves them. The -1jammy.<date> suffix differs per CPU and is resolved here.
+# The ROS apt repo keeps only the newest build; if a pinned version is gone, install saved .debs
+# (`apt-get download` on a machine of the same CPU while they exist). Unhold to upgrade:
+#   sudo apt-mark unhold $(apt-mark showhold | grep ros-humble-autoware)
+NDT_PINNED_PKGS=(
+  ros-humble-autoware-ndt-scan-matcher=1.9.0
+  ros-humble-autoware-map-loader=1.9.0
+  ros-humble-autoware-localization-util=1.9.0
+  ros-humble-autoware-qos-utils=1.9.0
+  ros-humble-autoware-agnocast-wrapper=1.9.0
+  ros-humble-autoware-component-interface-specs=1.9.0
+  ros-humble-autoware-geography-utils=1.9.0
+  ros-humble-autoware-lanelet2-utils=1.9.0
+  ros-humble-autoware-lanelet2-extension=1.2.0
+  ros-humble-autoware-utils-diagnostics=1.9.0
+  ros-humble-autoware-utils-geometry=1.9.0
+  ros-humble-autoware-utils-logging=1.9.0
+  ros-humble-autoware-utils-math=1.9.0
+  ros-humble-autoware-utils-pcl=1.9.0
+  ros-humble-autoware-utils-rclcpp=1.9.0
+  ros-humble-autoware-utils-tf=1.9.0
+  ros-humble-autoware-utils-visualization=1.9.0
+  ros-humble-autoware-adapi-v1-msgs=1.9.2
+  ros-humble-autoware-common-msgs=1.13.0
+  ros-humble-autoware-control-msgs=1.13.0
+  ros-humble-autoware-localization-msgs=1.13.0
+  ros-humble-autoware-map-msgs=1.13.0
+  ros-humble-autoware-perception-msgs=1.13.0
+  ros-humble-autoware-planning-msgs=1.13.0
+  ros-humble-autoware-system-msgs=1.13.0
+  ros-humble-autoware-vehicle-msgs=1.13.0
+  ros-humble-autoware-internal-debug-msgs=1.16.0
+  ros-humble-autoware-internal-localization-msgs=1.16.0
+  ros-humble-autoware-internal-planning-msgs=1.16.0
+)
+
+# "pkg=<upstream>" -> "pkg=<exact apt version>" (empty when the repo no longer has it)
+ndt_resolve_version() {
+  local pkg="${1%%=*}" up="${1#*=}" full
+  full="$(apt-cache madison "${pkg}" 2>/dev/null | awk -F'|' '{gsub(/ /,"",$2); print $2}' | grep -m1 "^${up}-" || true)"
+  if [[ -n "${full}" ]]; then echo "${pkg}=${full}"; fi
+}
+
+ndt_installed_version() {
+  dpkg-query -W -f='${Status}|${Version}' "$1" 2>/dev/null | awk -F'|' '$1 ~ / ok installed$/{print $2}' || true
+}
+
+if [[ "${DO_NDT}" -eq 1 ]]; then
+  _ndt_todo=()
+  for _spec in "${NDT_PINNED_PKGS[@]}"; do
+    _have="$(ndt_installed_version "${_spec%%=*}")"
+    [[ "${_have}" == "${_spec#*=}-"* ]] || _ndt_todo+=("${_spec}")
+  done
+  if [[ ${#_ndt_todo[@]} -eq 0 ]]; then
+    log "Autoware NDT apt packages: all ${#NDT_PINNED_PKGS[@]} at the pinned versions"
+  else
+    # Stale apt lists miss the packages: refresh once (other repos' signature errors must not stop setup).
+    if [[ -z "$(ndt_resolve_version "${_ndt_todo[0]}")" ]]; then
+      log "apt-get update before Autoware NDT package resolution"
+      sudo apt-get update -q || log "WARN: apt-get update reported errors (unrelated repos are ignored)"
+    fi
+    _ndt_specs=()
+    _ndt_missing=()
+    for _spec in "${_ndt_todo[@]}"; do
+      _full="$(ndt_resolve_version "${_spec}")"
+      if [[ -n "${_full}" ]]; then _ndt_specs+=("${_full}"); else _ndt_missing+=("${_spec}"); fi
+    done
+    if [[ ${#_ndt_missing[@]} -gt 0 ]]; then
+      log "WARN: pinned Autoware NDT versions not in apt (repo moved on?): ${_ndt_missing[*]}"
+      log "      LiDAR NDT (enable_ndt) needs them; install saved .debs or update the pins in setup_camrod.sh"
+    fi
+    if [[ ${#_ndt_specs[@]} -gt 0 ]]; then
+      log "install Autoware NDT apt packages (pinned): ${#_ndt_specs[@]}"
+      if apt_install_pkgs "Autoware NDT packages" --no-install-recommends --allow-downgrades \
+          --allow-change-held-packages "${_ndt_specs[@]}"; then
+        sudo apt-mark hold "${NDT_PINNED_PKGS[@]%%=*}" >/dev/null && \
+          log "Autoware NDT packages held at the pinned versions"
+      else
+        log "WARN: Autoware NDT apt install failed — ndt_localization_cpp will not build (enable_ndt stays unusable)"
+      fi
+    fi
+  fi
+  unset _ndt_todo _ndt_specs _ndt_missing _spec _have _full
 fi
 
 # ── External repositories ────────────────────────────────────────────────────

@@ -162,6 +162,19 @@ public:
     gnss_heading_unavailable_covariance_ =
       declare_parameter<double>("gnss_heading_unavailable_covariance", 1.0e6);
     hold_last_gnss_heading_ = declare_parameter<bool>("hold_last_gnss_heading", true);
+    // HJ_261112 - LiDAR NDT heading guard. While the NDT pose that feeds the EKF (ndt_ekf_gate output, sent only
+    // while the NDT match is good) is fresh and the dual-antenna heading differs from it by more than
+    // ndt_heading_conflict_deg, the GNSS heading is treated as wrong (seen 50-80 deg off with a reported 4-14 deg
+    // std in an RTK shadow): the GNSS yaw goes out as unavailable and the antenna lever arm is rotated with the
+    // NDT yaw instead. Agreeing headings pass unchanged. Empty topic = guard off (previous behavior).
+    ndt_pose_topic_ = declare_parameter<std::string>("ndt_pose_topic", "");
+    ndt_timeout_s_ = declare_parameter<double>("ndt_timeout_s", 0.5);
+    ndt_heading_conflict_rad_ =
+      deg2rad(declare_parameter<double>("ndt_heading_conflict_deg", 10.0));
+    // HJ_261112 - Same NDT condition, position: GNSS XY goes to the EKF only when the receiver reports RTK-fixed
+    // accuracy (horizontal std <= ndt_gnss_good_std_m from the NavSatFix covariance); otherwise (float/single)
+    // the XY goes out as unavailable and the NDT carries the position. Without a fresh NDT nothing changes.
+    ndt_gnss_good_std_m_ = declare_parameter<double>("ndt_gnss_good_std_m", 0.05);
     // HH_260806 - The NavSatFix origin is the left antenna, not robot_center_link.
     enable_gnss_lever_arm_correction_ =
       declare_parameter<bool>("enable_gnss_lever_arm_correction", false);
@@ -362,6 +375,15 @@ public:
         gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
           gnss_heading_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onGnssHeading, this, _1));
+      }
+
+      if (!ndt_pose_topic_.empty()) {
+        ndt_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+          ndt_pose_topic_, rclcpp::QoS(10),
+          [this](geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr m) {
+            ndt_yaw_ = yawFromQuat(m->pose.pose.orientation);
+            ndt_yaw_time_ = now();
+          });
       }
 
       if (!raw_pose_topic_.empty()) {
@@ -576,6 +598,22 @@ private:
     double heading_yaw_covariance = gnss_heading_unavailable_covariance_;
     const bool has_fresh_heading =
       selectHeading(stamp, heading_orientation, heading_yaw_covariance);
+    // HJ_261112 - NDT healthy and GNSS heading disagreeing: GNSS yaw unavailable, lever arm on NDT yaw.
+    ndt_fresh_at_fix_ = !ndt_pose_topic_.empty() && ndt_yaw_time_.nanoseconds() > 0 &&
+      (now() - ndt_yaw_time_).seconds() <= ndt_timeout_s_;
+    if (has_fresh_heading && ndt_fresh_at_fix_) {
+      const double diff = normalizeYaw(yawFromQuat(heading_orientation) - ndt_yaw_);
+      if (std::abs(diff) > ndt_heading_conflict_rad_) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(),
+          *get_clock(), 5000,
+          "GNSS heading %.1f deg off the NDT heading (> %.1f): GNSS yaw not sent, lever arm on NDT yaw",
+          diff * 180.0 / M_PI, ndt_heading_conflict_rad_ * 180.0 / M_PI);
+        heading_orientation = yawToQuat(ndt_yaw_);
+        heading_yaw_covariance = gnss_heading_unavailable_covariance_;
+        ++ndt_heading_overrides_;
+      }
+    }
 
     if (enable_gnss_lever_arm_correction_) {
       const std::optional<double> fresh_heading_yaw = has_fresh_heading ?
@@ -680,6 +718,23 @@ private:
         pose_cov.pose.covariance[0] = var_x;
         pose_cov.pose.covariance[7] = var_y;
         pose_cov.pose.covariance[14] = var_z;
+      }
+      // HJ_261112 - NDT healthy + GNSS not RTK-fixed quality: GNSS XY not sent (NDT carries the position).
+      if (ndt_fresh_at_fix_ && ndt_gnss_good_std_m_ > 0.0) {
+        const double raw_var = std::max(msg->position_covariance[0], msg->position_covariance[4]);
+        const bool good = msg->position_covariance_type != 0 && std::isfinite(raw_var) &&
+          raw_var > 0.0 &&
+          raw_var <= ndt_gnss_good_std_m_ * ndt_gnss_good_std_m_;
+        if (!good) {
+          pose_cov.pose.covariance[0] = pose_cov.pose.covariance[7] =
+            gnss_heading_unavailable_covariance_;
+          ++ndt_gnss_position_drops_;
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 10000,
+            "NDT healthy, GNSS std %.2f m > %.2f m: GNSS XY not sent to the EKF (%ld fixes so far)",
+            std::sqrt(std::max(raw_var, 0.0)), ndt_gnss_good_std_m_,
+            static_cast<long>(ndt_gnss_position_drops_));                                                           // NOLINT
+        }
       }
       publishGnssPoseCovariance(pose_cov);
     }
@@ -1001,6 +1056,16 @@ private:
   bool enable_pose_cov_bridge_{true};
   HeadingSample gnss_heading_;
   HeadingSample last_any_heading_;
+  std::string ndt_pose_topic_;
+  double ndt_timeout_s_{0.5};
+  double ndt_heading_conflict_rad_{0.17453292519943295};
+  double ndt_gnss_good_std_m_{0.05};
+  int64_t ndt_gnss_position_drops_{0};
+  bool ndt_fresh_at_fix_{false};
+  double ndt_yaw_{0.0};
+  rclcpp::Time ndt_yaw_time_{0, 0, RCL_ROS_TIME};
+  int64_t ndt_heading_overrides_{0};
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ndt_pose_sub_;
   bool has_any_heading_{false};
   std::string navsat_covariance_source_{"navsat"};
   double gnss_covariance_floor_xy_{0.25};

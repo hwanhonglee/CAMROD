@@ -30,6 +30,9 @@
     # RTK is otherwise healthy. Keep the monitor tolerant enough to avoid
     # false DR_ONLY->NORMAL recovery holds from timestamp jitter.
     gnss_timeout_s: 4.0
+    # HJ_261112 - GNSS lost but NDT pose fresh -> DEGRADED (NDT_ONLY) instead of DR_ONLY (enable_ndt:=true).
+    ndt_pose_topic: "/localization/ndt/pose_for_ekf"
+    ndt_timeout_s: 0.5
     imu_timeout_s: 1.0
     wheel_timeout_s: 1.0
 

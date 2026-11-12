@@ -98,6 +98,11 @@ public:
       "wheel_motion_speed_threshold_mps", 0.12);
 
     localization_timeout_s_ = declare_parameter<double>("localization_timeout_s", 1.0);
+    // HJ_261112 - While the LiDAR NDT pose feeds the EKF (ndt_ekf_gate output, only sent when the NDT match is
+    // good), the EKF is map-anchored; a GNSS reset there would pull a correct pose to a multipath GNSS fix.
+    // Empty topic = feature off (previous behavior).
+    ndt_pose_topic_ = declare_parameter<std::string>("ndt_pose_topic", "");
+    ndt_timeout_s_ = declare_parameter<double>("ndt_timeout_s", 1.0);
     gnss_timeout_s_ = declare_parameter<double>("gnss_timeout_s", 2.0);
 
     max_gnss_cov_trace_ = declare_parameter<double>("max_gnss_cov_trace", 25.0);
@@ -180,6 +185,14 @@ public:
           initialpose_topic_fallback_, rclcpp::QoS(10),
           std::bind(&LocalizationGnssReattachNode::onInitialPose, this, _1));
       }
+    }
+
+    if (!ndt_pose_topic_.empty()) {
+      ndt_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        ndt_pose_topic_, rclcpp::QoS(10),
+        [this](geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr) {
+          last_ndt_time_ = now();
+        });
     }
 
     ekf_set_pose_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
@@ -532,6 +545,12 @@ private:
       detached_motion_m_);
   }
 
+  bool ndtHealthy() const
+  {
+    return !ndt_pose_topic_.empty() && last_ndt_time_.nanoseconds() > 0 &&
+           (now() - last_ndt_time_).seconds() <= ndt_timeout_s_;
+  }
+
   void onTimer()
   {
     if (!localization_pose_ || !gnss_pose_) {
@@ -547,6 +566,13 @@ private:
     }
 
     const double gap_m = planarDistance(*localization_pose_, *gnss_pose_);
+    // HJ_261112 - NDT healthy: no GNSS reattach (and drop a pending detach).
+    if (ndtHealthy()) {
+      if (detached_) {
+        clearDetachedState(gap_m);
+      }
+      return;
+    }
     if (!detached_) {
       if (gap_m >= detach_distance_m_) {
         enterDetachedState(gap_m);
@@ -586,6 +612,9 @@ private:
   std::string initialpose_topic_;
   std::string initialpose_topic_fallback_;
   std::string initialpose_yaw_source_;
+  std::string ndt_pose_topic_;
+  double ndt_timeout_s_{1.0};
+  rclcpp::Time last_ndt_time_{0, 0, RCL_ROS_TIME};
 
   bool use_localization_yaw_{true};
   bool require_mode_gate_{false};
@@ -627,6 +656,7 @@ private:
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ndt_pose_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
     initialpose_fallback_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ekf_set_pose_pub_;

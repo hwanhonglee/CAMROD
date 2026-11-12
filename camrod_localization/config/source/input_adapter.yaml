@@ -67,6 +67,17 @@
     gnss_heading_max_covariance: 100.0
     gnss_heading_unavailable_covariance: 1000000.0
     hold_last_gnss_heading: true
+    # HJ_261112 - LiDAR NDT guard (enable_ndt:=true; silent otherwise). While the NDT pose for the EKF is fresh
+    # (only sent when the NDT match is good, NVTL >= 1.2):
+    #   heading : a GNSS heading more than ndt_heading_conflict_deg off the NDT heading is not sent to the EKF and
+    #             the lever arm uses the NDT yaw (agreeing headings pass)
+    #   position: GNSS XY is sent only at RTK-fixed accuracy (NavSatFix std <= ndt_gnss_good_std_m); float/single
+    #             XY is not sent and the NDT carries the position
+    # NDT not fresh (start-up, NDT lost): GNSS heading and position are used as before.
+    ndt_pose_topic: "/localization/ndt/pose_for_ekf"
+    ndt_timeout_s: 0.5
+    ndt_heading_conflict_deg: 10.0
+    ndt_gnss_good_std_m: 0.05   # bag 16_53_00: RTK fixed std p95 0.036 m, float p5 0.056 m
 
     # --- Position jump rejection ---
     max_position_jump_m: 8.0

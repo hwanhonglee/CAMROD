@@ -147,6 +147,26 @@
     pose1_rejection_threshold: 1000.0
 
     # =========================================================================
+    # 6b. LIDAR NDT POSE INPUT (pose2)
+    # =========================================================================
+    # HJ_261112 - NDT map matching (camrod_localization/external/ndt_localization_cpp, launch enable_ndt:=true).
+    # Published only while the NDT match is good (NVTL >= 1.2), so with NDT off or failing this input is silent and
+    # the EKF runs on GNSS + wheel/IMU as before. Covariance from ndt_ekf_gate: x/y std 0.10 m, yaw std 2 deg
+    # (x4 as NVTL drops to 1.2). RTK fixed GNSS (~0.02 m) dominates while available; in GNSS shadows NDT carries x/y/yaw.
+    # Frame map (map->odom static identity). Must stay pose2: robot_localization stops at the first missing index.
+    pose2: /localization/ndt/pose_for_ekf
+    pose2_config: [true,  true,  false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    pose2_differential: false
+    pose2_relative: false
+    pose2_queue_size: 10
+    # Mahalanobis gate: drop single NDT results far from the filter (e.g. a jump while re-converging).
+    pose2_rejection_threshold: 5.0
+
+    # =========================================================================
     # 7. PROCESS NOISE COVARIANCE
     # =========================================================================
     # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]

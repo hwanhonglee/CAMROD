@@ -2,7 +2,7 @@
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
@@ -30,6 +30,28 @@ def generate_launch_description():
     filter_launch     = _lc("launch/filter.launch.py")
     monitor_launch    = _lc("launch/monitor.launch.py")
     map_helper_launch = _lc("launch/map_helper.launch.py")
+    # HJ_261112 - LiDAR NDT localization (external/ndt_localization_cpp). Its pose enters the EKF as pose2
+    # (/localization/ndt/pose_for_ekf, sent only while the NDT match is good, NVTL >= 1.2).
+    # Optional package: when it is not built (Autoware NDT apt packages missing), only the NDT include is dropped.
+    try:
+        _ndt_share = get_package_share_directory("ndt_localization_cpp")
+        ndt_launch = os.path.join(_ndt_share, "launch", "ndt_localization_camrod.launch.py")
+        ndt_rviz_launch = os.path.join(_ndt_share, "launch", "ndt_rviz.launch.py")
+    except PackageNotFoundError:
+        ndt_launch = ndt_rviz_launch = None
+    ndt_actions = [] if ndt_launch is None else [
+        _inc(ndt_launch,
+             condition=IfCondition(LaunchConfiguration("enable_ndt")),
+             map_pcd=LaunchConfiguration("ndt_map_pcd"),
+             camrod_map_info=LaunchConfiguration("map_info_file"),
+             pose_source=LaunchConfiguration("ndt_pose_source"),
+        ),
+        # HJ_261112 - Separate RViz for the NDT match (PCD map + aligned scan); heavy, so its own process and opt-in.
+        _inc(ndt_rviz_launch,
+             condition=IfCondition(LaunchConfiguration("enable_ndt_rviz")),
+             map_pcd=LaunchConfiguration("ndt_map_pcd"),
+        ),
+    ]
 
     return LaunchDescription([
         DeclareLaunchArgument("module_namespace",                 default_value="localization"),
@@ -37,6 +59,15 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_filter",                    default_value="true"),
         DeclareLaunchArgument("enable_monitor",                   default_value="true"),
         DeclareLaunchArgument("enable_map_helper",                default_value="true"),
+        # HJ_261112 - NDT is opt-in; ndt_map_pcd = NDT map in this map frame (map_info_file origin, ENU).
+        DeclareLaunchArgument("enable_ndt",                       default_value="false"),
+        DeclareLaunchArgument("ndt_map_pcd",                      default_value=""),
+        # gnss_ndt (default): NDT initial guess from RTK-good GNSS, else the NDT's own prediction, so the NDT does not
+        # depend on the EKF it feeds. odom (initial guess from this EKF) lost the NDT in a 148 s RTK shadow on
+        # bag 16_53_00: one failed match -> EKF pulled by float GNSS -> wrong initial guess -> no recovery.
+        DeclareLaunchArgument("ndt_pose_source",                  default_value="gnss_ndt"),
+        # Separate NDT RViz (map + aligned LiDAR scan), independent of the operator RViz.
+        DeclareLaunchArgument("enable_ndt_rviz",                  default_value="false"),
         DeclareLaunchArgument(
             "adapter_param_file", default_value=_lc("config/source/input_adapter.yaml")
         ),
@@ -110,6 +141,8 @@ def generate_launch_description():
              condition=IfCondition(LaunchConfiguration("enable_map_helper")),
              params_file=LaunchConfiguration("map_helper_param_file"),
         ),
+
+        *ndt_actions,
 
         # HH_260720 - Keep the EKF map-to-odom link explicit and use current tf2 CLI options.
         Node(

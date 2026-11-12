@@ -48,6 +48,9 @@
 
     localization_timeout_s: 1.0
     gnss_timeout_s: 2.0
+    # HJ_261112 - No GNSS reattach while the LiDAR NDT pose feeds the EKF (enable_ndt:=true; silent otherwise).
+    ndt_pose_topic: "/localization/ndt/pose_for_ekf"
+    ndt_timeout_s: 1.0
 
     # =========================================================================
     # 5. COVARIANCE AND RESET SETTINGS

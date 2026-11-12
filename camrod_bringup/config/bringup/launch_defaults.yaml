@@ -48,6 +48,16 @@ bringup:
     enable_filter: true
     enable_monitor: true
     enable_map_helper: true
+    # HJ_261112 - LiDAR NDT map matching fused into the EKF as pose2 (sent only while the match is good).
+    # Needs the pinned Autoware NDT apt packages (setup_camrod.sh) and the NDT map PCD in the map_info.yaml frame
+    # (LocalCartesian ENU of the map origin). The NDT corrects the LiDAR mount internally (ndt_lidar_link,
+    # x 0.99 from NDT vs RTK bag tests); the robot TF is not changed.
+    enable_ndt: false
+    # Next to the lanelet2 maps (map/map_info.yaml map_path); git-ignored (401 MB), copy it to the robot by hand.
+    ndt_map_pcd: /home/nvidia/camrod_ws/src/pointcloud_map.pcd
+    # Second RViz (separate process from runtime/rviz): NDT map + NDT-aligned LiDAR scan. The map display
+    # is CPU/RAM heavy, so keep it off on the robot unless checking the match.
+    enable_ndt_rviz: false
     # HH_260721 - Use robot_localization EKF as the single supported filter backend.
     wheel_bridge_enable: true
     # Use platform status odometry as primary source.

@@ -20,6 +20,7 @@
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
 #include <avg_msgs/msg/avg_localization_status.hpp>
 #include <avg_msgs/msg/module_state.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 #include "camrod_localization/gnss_rate_window.hpp"
 
@@ -60,6 +61,11 @@ public:
       "/localization/input/wheel_odometry");
 
     gnss_timeout_s_ = declare_parameter<double>("gnss_timeout_s", 1.0);
+    // HJ_261112 - LiDAR NDT pose that feeds the EKF (ndt_ekf_gate output: sent only while the NDT match is good).
+    // While it is fresh, a GNSS outage is NDT_ONLY (DEGRADED, map-anchored) instead of DR_ONLY, so the DR timeout
+    // does not run. Empty topic = feature off (previous behavior).
+    ndt_pose_topic_ = declare_parameter<std::string>("ndt_pose_topic", "");
+    ndt_timeout_s_ = declare_parameter<double>("ndt_timeout_s", 0.5);
     imu_timeout_s_ = declare_parameter<double>("imu_timeout_s", 0.5);
     wheel_timeout_s_ = declare_parameter<double>("wheel_timeout_s", 0.5);
 
@@ -139,6 +145,14 @@ public:
     wheel_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
       wheel_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationMonitorNode::onWheel, this, _1));
+
+    if (!ndt_pose_topic_.empty()) {
+      ndt_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        ndt_pose_topic_, rclcpp::QoS(10),
+        [this](geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr) {
+          last_ndt_time_ = this->now();
+        });
+    }
 
     timer_ = create_wall_timer(
       std::chrono::milliseconds(100),
@@ -250,9 +264,11 @@ private:
       gnss_fresh && gnss_update_accepted && gnss_cov_ok && gnss_jump_ok && gnss_rate_ok;
     const bool wheel_good =
       wheel_ok && wheel_update_accepted;
+    const bool ndt_good = !ndt_pose_topic_.empty() && last_ndt_time_.nanoseconds() > 0 &&
+      (now - last_ndt_time_).seconds() <= ndt_timeout_s_;
 
     double confidence = 1.0;
-    if (!gnss_good) {confidence -= 0.35;}
+    if (!gnss_good) {confidence -= ndt_good ? 0.15 : 0.35;}
     if (!wheel_good) {confidence -= 0.15;}
     if (!imu_ok) {confidence -= 0.40;}
     if (gnss_innov_warn_bad) {confidence -= 0.20;}
@@ -263,11 +279,15 @@ private:
 
     avg_msgs::msg::AvgLocalizationMode mode;
     std::string status_label = "NORMAL";
-    const bool in_dr = !gnss_good && wheel_good;
+    const bool in_dr = !gnss_good && !ndt_good && wheel_good;
 
     if (!imu_ok) {
       mode = makeMode(avg_msgs::msg::AvgLocalizationMode().INVALID, "INVALID");
       status_label = "IMU_TIMEOUT";
+    } else if (!gnss_good && ndt_good) {
+      // HJ_261112 - GNSS lost but the EKF is held by the LiDAR NDT map match.
+      mode = makeMode(avg_msgs::msg::AvgLocalizationMode().DEGRADED, "DEGRADED");
+      status_label = "NDT_ONLY";
     } else if (in_dr) {
       mode = makeMode(avg_msgs::msg::AvgLocalizationMode().DR_ONLY, "DR_ONLY");
       status_label = "DEAD_RECKONING";
@@ -492,6 +512,10 @@ private:
   rclcpp::Time last_gnss_cov_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_wheel_time_{0, 0, RCL_ROS_TIME};
+  std::string ndt_pose_topic_;
+  double ndt_timeout_s_{0.5};
+  rclcpp::Time last_ndt_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ndt_pose_sub_;
 
   // HH_260807 - Only a new monotonically increasing GNSS epoch updates position,
   // jump, and rolling rate state. Duplicate mirrors and late callbacks cannot
