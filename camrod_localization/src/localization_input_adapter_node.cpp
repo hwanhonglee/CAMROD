@@ -27,8 +27,10 @@
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <ublox_msgs/msg/nav_relposned9.hpp>
 
 #include "camrod_localization/gnss_heading_fallback.hpp"
+#include "camrod_localization/gnss_heading_quality.hpp"
 #include "camrod_localization/gnss_lever_arm.hpp"
 #include "camrod_localization/navsat_fix_validation.hpp"
 
@@ -175,6 +177,16 @@ public:
     // accuracy (horizontal std <= ndt_gnss_good_std_m from the NavSatFix covariance); otherwise (float/single)
     // the XY goes out as unavailable and the NDT carries the position. Without a fresh NDT nothing changes.
     ndt_gnss_good_std_m_ = declare_parameter<double>("ndt_gnss_good_std_m", 0.05);
+    // HJ_261116 - GNSS yaw goes to the EKF only with an RTK FIXED moving-baseline solution (NAV-RELPOSNED), NDT or
+    // not: a float heading is tens of degrees off while the receiver still flags it valid. Not fixed: GNSS yaw out
+    // as unavailable, lever arm on the NDT yaw when the NDT is fresh (otherwise on the GNSS heading as before).
+    // Empty topic = gate off (previous behavior).
+    gnss_relposned_topic_ = declare_parameter<std::string>("gnss_relposned_topic", "");
+    gnss_heading_quality_.configure(
+      declare_parameter<double>("gnss_heading_fixed_settle_s", 1.0),
+      declare_parameter<double>("gnss_relposned_timeout_s", 1.0),
+      declare_parameter<double>("gnss_heading_baseline_m", 0.0),
+      declare_parameter<double>("gnss_heading_baseline_tolerance_m", 0.05));
     // HH_260806 - The NavSatFix origin is the left antenna, not robot_center_link.
     enable_gnss_lever_arm_correction_ =
       declare_parameter<bool>("enable_gnss_lever_arm_correction", false);
@@ -375,6 +387,15 @@ public:
         gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
           gnss_heading_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onGnssHeading, this, _1));
+      }
+
+      if (enable_gnss_heading_ && !gnss_relposned_topic_.empty()) {
+        gnss_relposned_sub_ = create_subscription<ublox_msgs::msg::NavRELPOSNED9>(
+          gnss_relposned_topic_, rclcpp::SensorDataQoS(),
+          [this](ublox_msgs::msg::NavRELPOSNED9::ConstSharedPtr m) {
+            gnss_heading_quality_.update(
+              now().nanoseconds(), m->flags, m->rel_pos_length * 1e-2 + m->rel_pos_hp_length * 1e-4);
+          });
       }
 
       if (!ndt_pose_topic_.empty()) {
@@ -601,7 +622,21 @@ private:
     // HJ_261112 - NDT healthy and GNSS heading disagreeing: GNSS yaw unavailable, lever arm on NDT yaw.
     ndt_fresh_at_fix_ = !ndt_pose_topic_.empty() && ndt_yaw_time_.nanoseconds() > 0 &&
       (now() - ndt_yaw_time_).seconds() <= ndt_timeout_s_;
-    if (has_fresh_heading && ndt_fresh_at_fix_) {
+    // HJ_261116 - Not RTK fixed: GNSS yaw unavailable whatever the NDT state; lever arm on the NDT yaw if fresh.
+    const bool heading_not_fixed = has_fresh_heading && !gnss_relposned_topic_.empty() &&
+      !gnss_heading_quality_.trusted(now().nanoseconds());
+    if (heading_not_fixed) {
+      heading_yaw_covariance = gnss_heading_unavailable_covariance_;
+      if (ndt_fresh_at_fix_) {
+        heading_orientation = yawToQuat(ndt_yaw_);
+      }
+      ++gnss_heading_not_fixed_;
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 10000,
+        "GNSS heading not RTK fixed%s: GNSS yaw not sent to the EKF, lever arm on %s yaw (%ld fixes so far)",
+        gnss_heading_quality_.hasSample() ? "" : " (no RELPOSNED yet)",
+        ndt_fresh_at_fix_ ? "NDT" : "GNSS", static_cast<long>(gnss_heading_not_fixed_));             // NOLINT
+    } else if (has_fresh_heading && ndt_fresh_at_fix_) {
       const double diff = normalizeYaw(yawFromQuat(heading_orientation) - ndt_yaw_);
       if (std::abs(diff) > ndt_heading_conflict_rad_) {
         RCLCPP_WARN_THROTTLE(
@@ -1066,6 +1101,10 @@ private:
   rclcpp::Time ndt_yaw_time_{0, 0, RCL_ROS_TIME};
   int64_t ndt_heading_overrides_{0};
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ndt_pose_sub_;
+  std::string gnss_relposned_topic_;
+  camrod_localization::GnssHeadingQuality gnss_heading_quality_;
+  int64_t gnss_heading_not_fixed_{0};
+  rclcpp::Subscription<ublox_msgs::msg::NavRELPOSNED9>::SharedPtr gnss_relposned_sub_;
   bool has_any_heading_{false};
   std::string navsat_covariance_source_{"navsat"};
   double gnss_covariance_floor_xy_{0.25};

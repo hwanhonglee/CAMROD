@@ -52,7 +52,8 @@ bringup:
     # Needs the pinned Autoware NDT apt packages (setup_camrod.sh) and the NDT map PCD in the map_info.yaml frame
     # (LocalCartesian ENU of the map origin). The NDT corrects the LiDAR mount internally (ndt_lidar_link,
     # x 0.99 from NDT vs RTK bag tests); the robot TF is not changed.
-    enable_ndt: false
+    # HJ_261116 - On by default in bringup (field runs always use the NDT); enable_ndt:=false to run without it.
+    enable_ndt: true
     # Next to the lanelet2 maps (map/map_info.yaml map_path); git-ignored (401 MB), copy it to the robot by hand.
     ndt_map_pcd: /home/nvidia/camrod_ws/src/pointcloud_map.pcd
     # Second RViz (separate process from runtime/rviz): NDT map + NDT-aligned LiDAR scan. The map display

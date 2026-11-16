@@ -155,8 +155,10 @@
     # (x4 as NVTL drops to 1.2). RTK fixed GNSS (~0.02 m) dominates while available; in GNSS shadows NDT carries x/y/yaw.
     # Frame map (map->odom static identity). Must stay pose2: robot_localization stops at the first missing index.
     pose2: /localization/ndt/pose_for_ekf
+    # HJ_261116 - x/y only here; the NDT yaw is pose3 (same topic) so that its own, wider gate lets a correct NDT
+    # heading pull back an EKF yaw that drifted, instead of the whole NDT pose being rejected with it.
     pose2_config: [true,  true,  false,
-                  false, false, true,
+                  false, false, false,
                   false, false, false,
                   false, false, false,
                   false, false, false]
@@ -165,6 +167,22 @@
     pose2_queue_size: 10
     # Mahalanobis gate: drop single NDT results far from the filter (e.g. a jump while re-converging).
     pose2_rejection_threshold: 5.0
+    # =========================================================================
+    # 6c. LIDAR NDT YAW INPUT (pose3)
+    # =========================================================================
+    # HJ_261116 - NDT yaw only (same topic as pose2). Wide gate: the NDT pose is already NVTL-gated by ndt_ekf_gate,
+    # and with the EKF yaw wrong by several degrees and confident, the old joint x/y/yaw gate (5) could reject the
+    # correct NDT heading together with its position. Must stay pose3 (contiguous indices).
+    pose3: /localization/ndt/pose_for_ekf
+    pose3_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    pose3_differential: false
+    pose3_relative: false
+    pose3_queue_size: 10
+    pose3_rejection_threshold: 20.0
 
     # =========================================================================
     # 7. PROCESS NOISE COVARIANCE

@@ -28,6 +28,7 @@ find_package(lanelet2_projection REQUIRED)
 find_package(camrod_map REQUIRED)
 
 find_package(yaml-cpp REQUIRED)
+find_package(ublox_msgs REQUIRED)
 
 # ------------------------------------------------------------------------------
 # Executables
@@ -51,6 +52,7 @@ ament_target_dependencies(localization_input_adapter_node
   nav_msgs
   sensor_msgs
   std_msgs
+  ublox_msgs
 )
 
 # ------------------------------------------------------------------------------
@@ -184,6 +186,13 @@ if(BUILD_TESTING)
     test/test_gnss_heading_fallback.cpp
   )
   target_include_directories(test_gnss_heading_fallback PRIVATE include)
+
+  # HJ_261116 - GNSS yaw reaches the EKF only with a settled RTK FIXED moving-baseline solution.
+  ament_add_gtest(
+    test_gnss_heading_quality
+    test/test_gnss_heading_quality.cpp
+  )
+  target_include_directories(test_gnss_heading_quality PRIVATE include)
 
   # HH_260807 - Average unique GNSS epochs so one delayed 5 Hz fix does not
   # immediately force DR_ONLY while a sustained former 1 Hz profile still does.

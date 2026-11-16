@@ -789,7 +789,7 @@ def generate_launch_description():
         ('localization_enable_monitor', cfg_get(launch_cfg, 'localization/enable_monitor', True), 'Enable localization monitor launch'),
         ('localization_enable_map_helper', cfg_get(launch_cfg, 'localization/enable_map_helper', True), 'Enable localization map_helper launch'),
         # HJ_261112 - LiDAR NDT localization (camrod_localization/external/ndt_localization_cpp) into the EKF.
-        ('localization_enable_ndt', cfg_get(launch_cfg, 'localization/enable_ndt', False), 'Enable LiDAR NDT localization (EKF pose2)'),
+        ('localization_enable_ndt', cfg_get(launch_cfg, 'localization/enable_ndt', True), 'Enable LiDAR NDT localization (EKF pose2)'),
         ('localization_ndt_map_pcd', cfg_get(launch_cfg, 'localization/ndt_map_pcd', ''), 'NDT map PCD in the map_info frame'),
         ('localization_enable_ndt_rviz', cfg_get(launch_cfg, 'localization/enable_ndt_rviz', False), 'Separate RViz: NDT map + aligned LiDAR scan'),
 

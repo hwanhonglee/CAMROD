@@ -29,6 +29,7 @@
   <depend>yaml-cpp</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
+  <depend>ublox_msgs</depend>
   <!-- HH_260721 - The runtime uses robot_localization EKF; custom ESKF dependencies were removed. -->
 
   <!-- Test dependencies -->

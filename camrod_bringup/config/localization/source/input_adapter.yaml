@@ -78,6 +78,15 @@
     ndt_timeout_s: 0.5
     ndt_heading_conflict_deg: 10.0
     ndt_gnss_good_std_m: 0.05   # bag 16_53_00: RTK fixed std p95 0.036 m, float p5 0.056 m
+    # HJ_261116 - GNSS yaw goes to the EKF only with an RTK FIXED moving-baseline solution (NAV-RELPOSNED carrSoln,
+    # relPosValid, relPosHeadingValid, baseline length), NDT or not. C-site bags 2026-11-11: |GNSS - NDT| heading p95
+    # 1.9-2.9 deg when fixed, median 13-52 deg when float although the receiver still flags the heading valid.
+    # Not fixed: GNSS yaw unavailable, lever arm on the NDT yaw when the NDT is fresh. '' = gate off.
+    gnss_relposned_topic: "/sensing/gnss/navrelposned"
+    gnss_heading_fixed_settle_s: 1.0        # continuous fixed needed after a float/none epoch
+    gnss_relposned_timeout_s: 1.0
+    gnss_heading_baseline_m: 0.902          # antenna baseline, fixed median of 3 bags (p1..p99 0.78..0.97 m)
+    gnss_heading_baseline_tolerance_m: 0.10
 
     # --- Position jump rejection ---
     max_position_jump_m: 8.0
