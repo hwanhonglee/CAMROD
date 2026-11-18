@@ -107,6 +107,7 @@ from camrod_ui.service_metrics import (
 )
 from camrod_ui.safety_reset import cancellations_complete, stationary_reset_blockers
 from camrod_ui.safety_reset_api import register_safety_reset_routes
+from camrod_ui.bringup_shutdown_api import register_bringup_shutdown_routes
 from camrod_ui.signal_profiler import SignalProfiler
 # HH_261102 - Charging access has an explicit same-origin request contract, not page-load motion.
 from camrod_ui.charging_access_api import register_charging_access_routes
@@ -9688,6 +9689,8 @@ class UiBackendNode(Node):
         # HH_261024 - Only explicit authenticated POST can request reset;
         # reading the administrator page has no motion-side effect.
         register_safety_reset_routes(app, node)
+        # HJ_261118 - Admin-only bringup shutdown (SIGINT to ros2 launch).
+        register_bringup_shutdown_routes(app, node)
         # HH_261103 - GET only observes; the single cargo departure requires an explicitly confirmed POST.
         register_charging_access_routes(app, node)
 

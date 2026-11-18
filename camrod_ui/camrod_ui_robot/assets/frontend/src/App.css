@@ -781,6 +781,227 @@ body {
   grid-column: 1 / -1;
 }
 
+/* ── HJ_261118 - 대기 화면 숲/나무 테마 ─────────────────────────────────────
+   Scoped to the home (waiting) screen only; other screens keep their headers. */
+.waiting-theme-forest {
+  --wf-forest: #1f3a2e;
+  --wf-forest-2: #2a4a3b;
+  --wf-bark: #6b4a2f;
+  --wf-cream: #f2ede3;
+  --wf-paper: #fdfbf6;
+  --wf-line: #ddd2c0;
+  --wf-ink: #2b2420;
+  --wf-muted: #6e645a;
+  --wf-soft: #d8e4d3;
+  background: var(--wf-cream);
+  color: var(--wf-ink);
+}
+
+.waiting-theme-forest .waiting-header {
+  flex: 0 0 12%;
+  background: var(--wf-forest);
+  border-bottom: 0;
+}
+.waiting-header-accent {
+  flex: 0 0 8px;
+  background: var(--wf-bark);
+}
+.waiting-theme-forest .wh-content { padding: 0 2.5rem; }
+.waiting-theme-forest .wh-subtitle { color: #c9d6c4; font-weight: 600; }
+.waiting-theme-forest .wh-main-title { text-shadow: none; }
+.waiting-theme-forest .wh-main-title em { color: #ffffff; }
+.waiting-theme-forest .wh-right-group { align-items: center; gap: 1.25rem; }
+.waiting-theme-forest .wh-battery-pill {
+  flex-direction: row;
+  gap: 0.5rem;
+  width: auto;
+  height: 46px;
+  padding: 0 1.1rem;
+  border-radius: 23px;
+  background: var(--wf-forest-2);
+}
+.waiting-theme-forest .wh-battery-pill svg { height: 22px; width: auto; }
+.waiting-theme-forest .wh-battery-pill .wh-battery-label { font-size: 1.05rem; color: #ffffff; }
+.waiting-theme-forest .wh-date { color: #c9d6c4; }
+.waiting-theme-forest .wh-time { text-shadow: none; letter-spacing: 0.02em; }
+
+/* 상태 카드 4개 / 실증 운행 현황: 내용·배치 유지, 색만 테마에 맞춤 */
+.waiting-theme-forest .waiting-runtime-panel {
+  background: transparent;
+  padding: 1rem 2.5rem 0;
+}
+.waiting-theme-forest .waiting-runtime-item {
+  min-height: 3.9rem;
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: none;
+}
+.waiting-theme-forest .waiting-runtime-copy small { color: var(--wf-ink); }
+.waiting-theme-forest .waiting-runtime-copy strong { color: var(--wf-muted); }
+.waiting-theme-forest .evidence-summary-strip {
+  min-height: 5.2rem;
+  border-color: var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: none;
+}
+.waiting-theme-forest .evidence-summary-heading > strong,
+.waiting-theme-forest .evidence-summary-more { color: var(--wf-forest); }
+.waiting-theme-forest .evidence-kpi { border-color: var(--wf-line); background: #ffffff; }
+
+/* 본문: 실증 요약 아래에 서비스 영역(왼쪽 대표 카드 + 오른쪽 3장) */
+.waiting-theme-forest .waiting-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.75rem 2.5rem 1.25rem;
+  background: transparent;
+}
+.waiting-services {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.75rem;
+}
+
+.waiting-hero {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: clamp(1.4rem, 4.5vh, 2.25rem) clamp(1.6rem, 3.4vw, 2.75rem);
+  border: 0;
+  border-radius: 20px;
+  background: var(--wf-forest);
+  color: #ffffff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.16s ease;
+}
+.waiting-hero:active { transform: scale(0.985); }
+.waiting-hero-ready {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: clamp(0.85rem, 1.25vw, 1.05rem);
+  font-weight: 700;
+  color: var(--wf-soft);
+}
+.waiting-hero-ready i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #6cc287;
+}
+.waiting-hero-ready.closed i { background: #a8a29a; }
+/* HJ_261118 - Status stays top and CTA bottom; the auto margins on the title
+   and CTA float the title/copy block midway between them (slightly raised). */
+.waiting-hero-title {
+  margin-top: auto;
+  font-size: clamp(2rem, 4.4vw, 3.6rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.waiting-hero-desc {
+  margin-top: 0.6rem;
+  font-size: clamp(0.95rem, 1.55vw, 1.25rem);
+  line-height: 1.6;
+  color: var(--wf-soft);
+}
+.waiting-hero-desc.outside-hours { color: #f3c98b; font-weight: 700; }
+.waiting-hero-go {
+  align-self: stretch;
+  margin-top: auto;
+  height: clamp(56px, 10vh, 80px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  border-radius: 16px;
+  background: var(--wf-cream);
+  color: var(--wf-forest);
+  font-size: clamp(1.15rem, 2vw, 1.65rem);
+  font-weight: 800;
+}
+.waiting-hero-go svg,
+.waiting-side-chevron {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.waiting-hero-go svg { width: 1.6em; height: 1.6em; }
+
+.waiting-side {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.waiting-side-card {
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  padding: 0 2rem 0 1.4rem;
+  border: 1.5px solid var(--wf-line);
+  border-radius: 20px;
+  background: var(--wf-paper);
+  color: var(--wf-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+.waiting-side-card:active { transform: scale(0.985); border-color: var(--wf-bark); }
+.waiting-side-art {
+  flex: 0 0 auto;
+  width: clamp(72px, 11vh, 104px);
+  height: clamp(72px, 11vh, 104px);
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #efe6d6;
+}
+.waiting-side-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+/* The 3D PNG illustrations carry wide transparent margins. */
+.waiting-side-art img { transform: scale(1.18); }
+/* The robot art fills its canvas more than the others; keep it smaller. */
+.waiting-side-art img[src$="robot_gemini_nobg.png"] { transform: scale(0.92); }
+.waiting-side-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.waiting-side-text strong {
+  font-size: clamp(1.15rem, 2vw, 1.65rem);
+  font-weight: 800;
+}
+.waiting-side-text small {
+  overflow: hidden;
+  font-size: clamp(0.85rem, 1.3vw, 1.05rem);
+  color: var(--wf-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waiting-side-chevron {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  color: var(--wf-bark);
+}
+
 /* ── 실증 운행 공개 요약 ─────────────────────────────────────────────────── */
 .evidence-summary-strip {
   grid-column: 1 / -1;
@@ -5564,3 +5785,633 @@ h1 {
   line-height: 1.75;
   margin: 0;
 }
+
+/* ── HJ_261118 - 서비스 선택 화면: 대기 화면 숲/나무 테마와 통일 ───────────── */
+.waiting-theme-forest .service-selection-body {
+  gap: 1rem;
+  padding: 1rem 2.5rem 1.25rem;
+  background: transparent;
+}
+.waiting-theme-forest .service-selection-heading h1 {
+  margin-top: 0.1rem;
+  color: var(--wf-forest);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.waiting-theme-forest .service-selection-grid { gap: 1.25rem 1.75rem; }
+.waiting-theme-forest .service-choice-card,
+.waiting-theme-forest .service-choice-delivery,
+.waiting-theme-forest .service-choice-recall,
+.waiting-theme-forest .service-choice-docking {
+  gap: 0.75rem;
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: none;
+  color: var(--wf-ink);
+}
+.waiting-theme-forest .service-choice-card:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+.waiting-theme-forest .service-choice-card:active:not(:disabled) {
+  transform: scale(0.985);
+  border-color: var(--wf-bark);
+}
+.waiting-theme-forest .service-choice-card:disabled {
+  opacity: 0.6;
+  filter: none;
+}
+.waiting-theme-forest .service-choice-icon {
+  width: clamp(64px, 10vh, 88px);
+  height: clamp(64px, 10vh, 88px);
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--wf-bark);
+}
+.waiting-theme-forest .service-choice-docking .service-choice-icon {
+  width: clamp(52px, 8vh, 68px);
+  height: clamp(52px, 8vh, 68px);
+  border-radius: 14px;
+  background: #a08e7a;
+}
+.waiting-theme-forest .service-choice-icon svg {
+  width: 52%;
+  height: 52%;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.waiting-theme-forest .service-choice-card strong { font-weight: 800; letter-spacing: -0.02em; }
+.waiting-theme-forest .service-choice-card > span:last-child { color: var(--wf-muted); font-weight: 500; }
+.waiting-theme-forest .service-selection-dock-wrap > .manual-motion-status { color: var(--wf-muted); }
+.waiting-theme-forest .service-selection-back {
+  min-width: 16rem;
+  padding: 0.85rem 1.6rem;
+  border-radius: 14px;
+  background: var(--wf-forest);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.waiting-theme-forest .service-selection-back:hover { background: var(--wf-forest-2); }
+
+/* HJ_261118 - 서비스 선택 화면의 확인 창(배달·호출·충전)도 숲/나무 테마로 통일 */
+/* HJ_261118 - Warm (yellow-brown) dim behind every popup on the forest-theme screens. */
+.waiting-theme-forest { --wf-dim: rgba(150, 124, 78, 0.3); }
+.waiting-theme-forest .move-confirm-overlay,
+.waiting-theme-forest .move-verify-overlay,
+.waiting-theme-forest .arrival-complete-overlay,
+.waiting-theme-forest .modal-overlay { background: var(--wf-dim); }
+.waiting-theme-forest .move-confirm-box {
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: 0 16px 44px rgba(74, 54, 26, 0.3);
+}
+.waiting-theme-forest .move-confirm-msg { color: var(--wf-ink); }
+.waiting-theme-forest .move-confirm-yes {
+  background: var(--wf-forest);
+  box-shadow: none;
+}
+.waiting-theme-forest .move-confirm-yes:hover { background: var(--wf-forest-2); }
+.waiting-theme-forest .move-confirm-no {
+  /* HJ_261118 - Cancel is plain white so it reads as the secondary choice. */
+  border: 1.5px solid var(--wf-line);
+  background: #ffffff;
+  color: var(--wf-muted);
+}
+.waiting-theme-forest .move-confirm-no:hover { background: #faf7f1; }
+
+/* ── HJ_261118 - 목적지 선택(운행) 화면: 숲/나무 테마 ─────────────────────────
+   Selection state gets the new site card + zone board; running/arrival/return
+   states keep their layout and only take the theme colours. */
+.waiting-theme-forest .mission-role-banner {
+  margin: 0.85rem 2.5rem 0;
+  align-items: center;
+  padding: 0.5rem 0.6rem 0.5rem 1.3rem;
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: none;
+}
+.waiting-theme-forest .mission-role-banner > strong {
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  font-weight: 800;
+  color: var(--wf-forest);
+}
+.waiting-theme-forest .driving-integrated-open {
+  height: 44px;
+  padding: 0 1.1rem;
+  border-radius: 12px;
+  background: var(--wf-forest);
+}
+.waiting-theme-forest .control-body {
+  gap: 1.75rem;
+  padding: 0.85rem 2.5rem 1.2rem;
+}
+
+/* 왼쪽 카드 */
+.waiting-theme-forest .preview-panel {
+  flex: 0 0 34%;
+  padding: 1.2rem;
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: none;
+  gap: 0.75rem;
+}
+.preview-panel-main {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+}
+.waiting-theme-forest .preview-placeholder-title { color: var(--wf-ink); font-size: clamp(1.3rem, 2.3vw, 2rem); }
+.waiting-theme-forest .preview-placeholder { color: var(--wf-muted); font-size: clamp(0.95rem, 1.4vw, 1.15rem); font-weight: 500; line-height: 1.7; }
+.waiting-theme-forest .preview-site-name { color: var(--wf-forest); }
+.waiting-theme-forest .preview-question { color: var(--wf-ink); }
+.waiting-theme-forest .preview-moving,
+.waiting-theme-forest .preview-arrived { color: var(--wf-forest); }
+.waiting-theme-forest .preview-returning { color: var(--wf-bark); }
+.waiting-theme-forest .preview-image { box-shadow: none; }
+.waiting-theme-forest .preview-yes-btn,
+.waiting-theme-forest .preview-return-btn {
+  background: var(--wf-forest);
+  box-shadow: none;
+}
+.waiting-theme-forest .preview-yes-btn:hover,
+.waiting-theme-forest .preview-return-btn:hover { background: var(--wf-forest-2); }
+.waiting-theme-forest .preview-no-btn {
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-cream);
+  color: var(--wf-muted);
+}
+/* 운행 정지는 안전 동작이라 빨간색을 유지한다. */
+.waiting-theme-forest .control-back-btn {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: 0;
+  padding: 0.8rem;
+  border: 1.5px solid #bfb19b;
+  border-radius: 14px;
+  background: var(--wf-paper);
+  color: var(--wf-ink);
+  font-size: 1.05rem;
+}
+.waiting-theme-forest .control-back-btn:hover { background: var(--wf-cream); }
+.waiting-theme-forest .control-back-btn:disabled { background: var(--wf-paper); color: #b5aca0; opacity: 0.7; }
+
+.site-pick {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  text-align: left;
+}
+.waiting-theme-forest .site-pick-photo {
+  flex: 0 1 auto;
+  width: 100%;
+  height: clamp(130px, 24vh, 230px);
+  max-height: none;
+  object-fit: cover;
+  border-radius: 14px;
+}
+.site-pick-photo-empty {
+  display: grid;
+  place-items: center;
+  background: #e5ddd0;
+  color: var(--wf-muted);
+  font-size: 0.95rem;
+}
+.site-pick-name {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.site-pick-zone {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--wf-bark);
+  color: #ffffff;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+.waiting-theme-forest .site-pick-name .preview-site-name {
+  margin: 0;
+  font-size: clamp(2rem, 3.6vw, 2.8rem);
+  line-height: 1;
+}
+.site-pick-role {
+  margin-left: auto;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: #e7efe5;
+  color: var(--wf-forest);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.site-pick-info {
+  margin: 0;
+  color: var(--wf-muted);
+  font-size: clamp(0.88rem, 1.3vw, 1.02rem);
+  line-height: 1.65;
+}
+.waiting-theme-forest .site-pick-go {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 1.05rem 0;
+  border-radius: 14px;
+  font-size: clamp(1.1rem, 1.8vw, 1.4rem);
+  font-weight: 800;
+}
+
+/* 오른쪽 구역 탭 + 사이트 판 */
+.waiting-theme-forest .app.site-board {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  gap: 0.75rem;
+}
+.site-zone-tabs {
+  flex: 0 0 auto;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 1.5rem) / 3);
+  gap: 0.75rem;
+  overflow-x: auto;
+}
+.site-zone-tab {
+  height: clamp(58px, 9vh, 76px);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1rem;
+  border: 2px solid #bfb19b;
+  border-radius: 16px;
+  background: var(--wf-paper);
+  color: var(--wf-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.site-zone-badge {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #2f6b4a;
+  color: #ffffff;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.site-zone-copy { display: flex; flex-direction: column; min-width: 0; }
+.site-zone-copy strong { font-size: 1.15rem; font-weight: 800; }
+.site-zone-copy small { color: var(--wf-muted); font-size: 0.8rem; font-weight: 600; }
+.site-zone-tab.active { border-color: var(--wf-forest); background: var(--wf-forest); color: #ffffff; }
+.site-zone-tab.active .site-zone-copy small { color: #c9d6c4; }
+.site-zone-tab.active .site-zone-badge { border: 2px solid #ffffff; border-radius: 10px; background: var(--wf-bark); }
+
+.site-board-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.waiting-theme-forest .site-board-head h1 {
+  color: var(--wf-ink);
+  font-size: clamp(1.1rem, 1.9vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.site-board-legend { display: flex; gap: 1rem; color: var(--wf-muted); font-size: 0.85rem; white-space: nowrap; }
+.site-board-legend i {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 0.4rem;
+  border-radius: 5px;
+  vertical-align: -3px;
+}
+.site-board-legend .legend-free { border: 1.5px solid #bfb19b; background: var(--wf-paper); }
+.site-board-legend .legend-busy { background: #e3dccf; }
+.site-board-legend .legend-tent { border: 2px solid var(--wf-bark); background: #f6efe5; }
+
+.waiting-theme-forest .toggle-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+.waiting-theme-forest .toggle-card {
+  gap: 0.2rem;
+  border: 2px solid #bfb19b;
+  border-radius: 14px;
+  background: var(--wf-paper);
+  box-shadow: none;
+}
+.waiting-theme-forest .toggle-card:hover { background: var(--wf-paper); box-shadow: none; }
+.waiting-theme-forest .site-label { color: var(--wf-ink); font-size: clamp(1.15rem, 2vw, 1.65rem); font-weight: 800; }
+.site-status { color: var(--wf-ink); font-size: clamp(0.7rem, 1vw, 0.85rem); font-weight: 700; }
+.waiting-theme-forest .toggle-card.occupied { border-color: transparent; background: #e3dccf; opacity: 1; }
+.waiting-theme-forest .toggle-card.occupied .site-label,
+.waiting-theme-forest .toggle-card.occupied .site-status { color: #8a7f72; }
+.waiting-theme-forest .toggle-card.tent { border-color: var(--wf-bark); background: #f6efe5; }
+.waiting-theme-forest .toggle-card.tent .site-status { color: var(--wf-bark); }
+.waiting-theme-forest .toggle-card.selected,
+.waiting-theme-forest .toggle-card.on,
+.waiting-theme-forest .toggle-card.on:hover {
+  border-color: var(--wf-forest);
+  background: var(--wf-forest);
+  box-shadow: none;
+}
+.waiting-theme-forest .toggle-card.selected .site-label,
+.waiting-theme-forest .toggle-card.on .site-label { color: #ffffff; }
+.waiting-theme-forest .toggle-card.selected .site-status,
+.waiting-theme-forest .toggle-card.on .site-status { color: #d8e4d3; }
+.waiting-theme-forest .toggle-card.locked,
+.waiting-theme-forest .toggle-card.locked:hover { background: var(--wf-paper); opacity: 0.45; }
+.site-board-pager { display: flex; align-items: center; justify-content: center; gap: 1rem; }
+
+/* HJ_261118 - 구역 안 페이지 넘기기 (16개 초과 구역) */
+.site-board-pager { flex: 0 0 auto; height: 48px; gap: 1rem; }
+.waiting-theme-forest .site-board-pager .page-arrow {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid #bfb19b;
+  border-radius: 50%;
+  background: var(--wf-paper);
+  box-shadow: none;
+  color: var(--wf-forest);
+  font-size: 1rem;
+}
+.waiting-theme-forest .site-board-pager .page-arrow:disabled { opacity: 0.35; }
+.waiting-theme-forest .site-board-pager .page-dots { margin: 0; gap: 0.5rem; }
+.waiting-theme-forest .site-board-pager .page-dot { width: 10px; height: 10px; background: #bfb19b; }
+.waiting-theme-forest .site-board-pager .page-dot.active { width: 28px; border-radius: 5px; background: var(--wf-forest); }
+.site-board-page-label { color: var(--wf-muted); font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* HJ_261118 - 임시 표시용(아직 운영하지 않는) 사이트 */
+.waiting-theme-forest .toggle-card.planned {
+  border: 2px dashed #cfc3b0;
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 1;
+}
+.waiting-theme-forest .toggle-card.planned .site-label,
+.waiting-theme-forest .toggle-card.planned .site-status { color: #a99d8d; }
+
+/* ── HJ_261118 - 안내 팝업(로봇 이용 방법·시설 안내·탐방로) 밝은 베이지 테마 ── */
+.guide-card-header-service { background: linear-gradient(135deg, #2d6e40, #43a047); }
+.guide-card-header-stop { background: linear-gradient(135deg, #b71c1c, #e53935); }
+.waiting-theme-forest .guide-card-header-service { background: var(--wf-forest); }
+
+.waiting-theme-forest .modal-box,
+.waiting-theme-forest .carousel-box { background: var(--wf-paper); }
+.waiting-theme-forest .modal-header {
+  border-bottom: 1.5px solid var(--wf-line);
+  background: var(--wf-cream);
+}
+.waiting-theme-forest .modal-title { color: var(--wf-forest); }
+.waiting-theme-forest .modal-back-btn,
+.waiting-theme-forest .carousel-close-btn { background: var(--wf-forest); }
+.waiting-theme-forest .modal-back-btn:hover,
+.waiting-theme-forest .carousel-close-btn:hover { background: var(--wf-forest-2); }
+.waiting-theme-forest .modal-body { background: #f7f2e8; }
+
+.waiting-theme-forest .park-banner {
+  /* HJ_261118 - No left accent bar; a plain beige box. */
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+}
+.waiting-theme-forest .park-banner-current { color: var(--wf-forest); }
+
+.waiting-theme-forest .guide-card { border: 1.5px solid var(--wf-line); box-shadow: none; }
+.waiting-theme-forest .guide-card-body { background: var(--wf-paper); }
+.waiting-theme-forest .guide-card-visual { border-color: var(--wf-line); background: #efe6d6; }
+.waiting-theme-forest .guide-service-definition,
+.waiting-theme-forest .guide-service-recall {
+  border: 1.5px solid var(--wf-line);
+  background: #f6f0e4;
+}
+.guide-step-num-service { background: #2d6e40; }
+.guide-step-num-stop { background: #b71c1c; }
+.waiting-theme-forest .guide-service-definition > div > span,
+.waiting-theme-forest .guide-step-num-service { background: var(--wf-forest); }
+
+.waiting-theme-forest .facility-section {
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+  box-shadow: none;
+}
+.waiting-theme-forest .facility-section-title {
+  border-bottom-color: var(--wf-line);
+  color: var(--wf-forest);
+}
+.waiting-theme-forest .facility-fee-table { border-color: var(--wf-line); }
+.waiting-theme-forest .fee-header { background: var(--wf-forest); }
+.waiting-theme-forest .amenity-chip { border-color: var(--wf-line); background: #fffdf8; }
+.waiting-theme-forest .amenity-label { color: var(--wf-forest); }
+
+.waiting-theme-forest .trail-card {
+  border: 1.5px solid var(--wf-line);
+  /* Trail cards carry an inline per-trail left colour; neutralise it here. */
+  border-left-color: var(--wf-line) !important;
+  background: var(--wf-paper);
+  box-shadow: none;
+}
+.waiting-theme-forest .trail-card-name { color: var(--wf-forest); }
+.waiting-theme-forest .trail-meta-item svg { color: var(--wf-bark); }
+.waiting-theme-forest .trail-more-btn { background: var(--wf-forest); }
+.waiting-theme-forest .trail-more-btn:hover { background: var(--wf-forest-2); }
+
+/* ── HJ_261118 - 도착 화면 (배달·호출) ─────────────────────────────────────── */
+.arrival-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  background: var(--wf-cream);
+  color: var(--wf-ink);
+}
+.arrival-trip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 88px;
+  margin: 14px 2.5rem 0;
+  padding: 10px 24px 10px 18px;
+  border: 1.5px solid var(--wf-line);
+  border-radius: 20px;
+  background: var(--wf-paper);
+}
+.arrival-face {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border: 3px solid #2f5a45;
+  border-radius: 16px;
+  background: var(--wf-forest);
+}
+.arrival-face svg { width: 20px; height: 12px; }
+.arrival-face path { fill: none; stroke: #e9f5ec; stroke-width: 3.5; stroke-linecap: round; }
+.arrival-trip-copy { flex: 1; min-width: 0; }
+.arrival-trip-copy h1 { margin: 0; color: var(--wf-ink); font-size: clamp(1.4rem, 2.4vw, 1.9rem); font-weight: 800; letter-spacing: -0.01em; }
+.arrival-trip-copy p { margin: 4px 0 0; color: var(--wf-muted); font-size: 1rem; }
+.arrival-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  background: #e7efe5;
+  color: var(--wf-forest);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.arrival-status i { width: 9px; height: 9px; border-radius: 50%; background: #4caf6a; }
+.arrival-alert {
+  margin: 10px 2.5rem 0;
+  padding: 10px 16px;
+  border: 1px solid #e8c6a6;
+  border-radius: 12px;
+  background: #fff2e7;
+  color: #8a4728;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.arrival-steps {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  padding: 16px 2.5rem 0;
+}
+.arrival-step {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border: 1.5px solid var(--wf-line);
+  border-radius: 20px;
+  background: var(--wf-paper);
+}
+.arrival-step-num {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--wf-bark);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+.arrival-step-art {
+  flex: 1;
+  min-height: 0;
+  margin-top: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #efe6d6;
+}
+.arrival-step-art svg { width: 62%; max-height: 86%; }
+.arrival-step-art text { font-family: inherit; }
+.arrival-step strong { margin-top: 14px; font-size: clamp(1.1rem, 1.9vw, 1.45rem); font-weight: 800; letter-spacing: -0.01em; }
+.arrival-step small { margin-top: 4px; color: var(--wf-muted); font-size: 0.95rem; }
+.arrival-end {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 96px;
+  margin: 16px 2.5rem 20px;
+  padding: 12px 14px 12px 28px;
+  border: 1.5px solid var(--wf-line);
+  border-radius: 20px;
+  background: var(--wf-paper);
+}
+.arrival-end-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.arrival-end-copy strong { font-size: clamp(1.2rem, 2vw, 1.5rem); font-weight: 800; }
+.arrival-end-copy small { color: var(--wf-muted); font-size: 0.95rem; }
+.arrival-end-btn {
+  flex: 0 0 auto;
+  min-width: 200px;
+  height: 68px;
+  padding: 0 40px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--wf-forest);
+  color: #fff;
+  font: inherit;
+  font-size: clamp(1.15rem, 1.8vw, 1.4rem);
+  font-weight: 800;
+  cursor: pointer;
+}
+.arrival-end-btn:active { transform: scale(0.98); }
+.arrival-end-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.arrival-confirm-overlay { z-index: 450; }
+.arrival-confirm-body { display: block; margin-top: 10px; color: var(--wf-muted, #6e645a); font-size: 1rem; font-weight: 500; line-height: 1.6; }
+
+/* HJ_261118 - 배너의 한·영 전환 버튼(배터리 왼쪽). 선택된 언어는 크림 바탕. */
+.wh-lang-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 46px;
+  padding: 4px;
+  border-radius: 23px;
+  background: var(--wf-forest-2, #2a4a3b);
+}
+.wh-lang-toggle button {
+  height: 38px;
+  min-width: 84px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 19px;
+  background: transparent;
+  color: #c9d6c4;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.wh-lang-toggle button.active {
+  background: var(--wf-cream, #f2ede3);
+  color: var(--wf-forest, #1f3a2e);
+}
+/* HJ_261118 - 영어처럼 긴 문장에서도 배너 요소가 두 줄로 깨지지 않게 */
+.waiting-theme-forest .wh-battery-label,
+.waiting-theme-forest .wh-date,
+.waiting-theme-forest .wh-time,
+.waiting-theme-forest .wh-main-title,
+.waiting-theme-forest .wh-subtitle { white-space: nowrap; }

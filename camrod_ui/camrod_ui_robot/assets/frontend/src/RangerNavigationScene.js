@@ -10,6 +10,7 @@ import { classifyNavigationObject, createNavigationObjectVisual,
   updateNavigationObjectVisual, navigationObjectDimensions } from './navigationObjectVisuals';
 import { RANGER_MODEL_URL, RANGER_SIDE_WRAP_URL, RANGER_FRONT_WRAP_URL, RANGER_REAR_WRAP_URL } from './rangerModelAsset';
 import { areaIsDestination, areaLabelPoint } from './navigationAreas';
+import { useT } from './i18n';
 import { createNavigationAreaVisuals, sceneryClearOfAreas } from './navigationAreaVisuals';
 import { illustratedRoadPositions } from './navigationRoadVisuals';
 import { createNavigationVegetation } from './navigationSceneryVisuals';
@@ -829,6 +830,8 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
 
   useEffect(() => { controllerRef.current?.accept(data); }, [data]);
 
+  // HJ_261118 - 손님이 보는 장면 위 글자(목적지 표시, 외관 보기, 경로 상태, 로딩)는 한·영 전환을 따른다.
+  const t = useT();
   const hasRoute = data.connected && data.pose && data.route.length > 1;
   const loadingText = ({ loading: '로봇 외관 불러오는 중', 'load-error': '로봇 외관을 불러오지 못했습니다',
     'unit-error': 'Ranger 모델의 미터 단위 확인이 필요합니다', 'webgl-unavailable': '이 환경에서 3D 렌더링을 사용할 수 없습니다' })[modelStatus];
@@ -836,20 +839,20 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     data-demo={demo ? 'true' : 'false'}
     data-cargo-preview={cargoVisible ? 'true' : 'false'} data-wrap-visible={wrapVisible ? 'true' : 'false'}>
     <div ref={hostRef} className="ranger-navigation-surface" />
-    <div className="ranger-navigation-area-labels" aria-label="캠핑사이트 및 출발·복귀 구역">
+    <div className="ranger-navigation-area-labels" aria-label={t('캠핑사이트 및 출발·복귀 구역')}>
       {(data.baseMap?.areas || []).map(area => <div key={area.id} className="ranger-navigation-area-label"
         data-kind={area.kind} data-destination={areaIsDestination(area, data.mission) ? 'true' : 'false'}
         ref={element => { if (element) areaLabelsRef.current.set(area.id, element); else areaLabelsRef.current.delete(area.id); }}>
-        {area.label}{areaIsDestination(area, data.mission) && <small>목적지</small>}
+        {area.label}{areaIsDestination(area, data.mission) && <small>{t('목적지')}</small>}
       </div>)}
     </div>
-    <div className="ranger-navigation-object-labels" aria-label="수신된 전방 객체">
+    <div className="ranger-navigation-object-labels" aria-label={t('수신된 전방 객체')}>
       {data.objects.slice(0, 12).map((object, index) => <div className="ranger-navigation-object-label"
         data-size-mode={navigationObjectDimensions(object) ? 'observed' : 'symbolic'}
         key={`${object.id}-${index}`} ref={(element) => { if (element) objectLabelsRef.current.set(index, element); else objectLabelsRef.current.delete(index); }}>
         <NavigationObjectIcon className={object.class_name} />
-        <div><div className="ranger-navigation-object-title"><strong>{object.class_name || '감지 객체'}</strong><span data-object-distance /></div>
-          <small>{objectGeometryCaption(object, demo)}</small></div>
+        <div><div className="ranger-navigation-object-title"><strong>{t(object.class_name || '감지 객체')}</strong><span data-object-distance /></div>
+          <small>{t(objectGeometryCaption(object, demo))}</small></div>
       </div>)}
     </div>
     <button type="button" className="ranger-navigation-detail" aria-pressed={detailView}
@@ -858,29 +861,28 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       onPointerMove={(event) => event.stopPropagation()} onPointerCancel={(event) => event.stopPropagation()}
       onKeyDown={(event) => { if (['Enter', ' '].includes(event.key)) event.stopPropagation(); }}
       onClick={(event) => { event.preventDefault(); event.stopPropagation(); detailRef.current = !detailRef.current; setDetailView(detailRef.current); }}>
-      {detailView ? '주행 시점' : '외관 보기'}
+      {t(detailView ? '주행 시점' : '외관 보기')}
     </button>
     {detailView && <button type="button" className="ranger-navigation-detail ranger-navigation-angle"
       data-navigation="angle" data-view-index={detailAngleIndex}
-      aria-label={`방향 보기, 현재 ${['후면·우측', '전면·우측', '전면·좌측', '후면·좌측'][detailAngleIndex]}`}
+      aria-label={`${t('방향 보기, 현재')} ${t(['후면·우측', '전면·우측', '전면·좌측', '후면·좌측'][detailAngleIndex])}`}
       onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}
       onPointerMove={(event) => event.stopPropagation()} onPointerCancel={(event) => event.stopPropagation()}
       onKeyDown={(event) => { if (['Enter', ' '].includes(event.key)) event.stopPropagation(); }}
       onClick={(event) => { event.preventDefault(); event.stopPropagation(); detailAngleRef.current += Math.PI / 2;
         setDetailAngleIndex(Math.round(detailAngleRef.current / (Math.PI / 2)) % 4); }}>
-      방향 보기 ↻ <span>{['후면·우측', '전면·우측', '전면·좌측', '후면·좌측'][detailAngleIndex]}</span>
+      {t('방향 보기')} ↻ <span>{t(['후면·우측', '전면·우측', '전면·좌측', '후면·좌측'][detailAngleIndex])}</span>
     </button>}
     <div className={`ranger-navigation-route-status ${hasRoute ? '' : 'is-waiting'}`}><i />
-      {hasRoute ? `${demo ? '시연' : '주행'} 경로` : data.routeReason || '위치·경로 수신 대기'}
+      {t(hasRoute ? `${demo ? '시연' : '주행'} 경로` : data.routeReason || '위치·경로 수신 대기')}
     </div>
-    {modelStatus !== 'ready' && <div className="ranger-navigation-loading" role="status"><span className="ranger-navigation-loading-icon">3D</span><strong>{loadingText}</strong><span>정적 이미지로 대체하지 않습니다</span></div>}
-    {!data.perceptionReady && <span className="ranger-navigation-perception-wait">전방 인지 수신 대기</span>}
-    <div className="ranger-navigation-legend"><span
-      title="초록 경계는 화면에서만 최대 12cm 이내로 곡선화합니다. 원본 지도·안전 경계는 변경하지 않습니다.">{demo ? '시연 경로 · 예시 배경'
-      : `${data.baseMap?.valid ? '수신 Lanelet 지도 · ' : ''}${hasRoute ? '실제 경로' : '경로 대기'} · ${data.baseMap?.valid ? '도로 폭·주변은 예시 (실제 지형 아님)' : '도로변 예시 배경 (실제 지형 아님)'}`}
-      {/* HH_261002 - Do not present inferred wheel poses as measured joint telemetry. */}
-      {detailView && <><br />바퀴 조향·회전: 차체 이동 기반 추정</>}
-      {detailView && data.baseMap?.valid && <><br />경계 곡선: 화면 전용 · 최대 편차 12cm</>}
-    </span></div>
+    {modelStatus !== 'ready' && <div className="ranger-navigation-loading" role="status"><span className="ranger-navigation-loading-icon">3D</span><strong>{t(loadingText)}</strong><span>{t('정적 이미지로 대체하지 않습니다')}</span></div>}
+    {/* HJ_261118 - The passenger view drops the perception-wait chip and the
+        map/legend caption. The detail (외관 보기) view still discloses that wheel
+        poses and boundary curves are display-only estimates. */}
+    {detailView && <div className="ranger-navigation-legend"><span>
+      {t('바퀴 조향·회전: 차체 이동 기반 추정')}
+      {data.baseMap?.valid && <><br />{t('경계 곡선: 화면 전용 · 최대 편차 12cm')}</>}
+    </span></div>}
   </div>;
 }

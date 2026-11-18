@@ -261,6 +261,136 @@ def _load_gtk() -> tuple[Any, Any, Any, Any]:
     return Gdk, GLib, Gtk, WebKit2
 
 
+# HJ_261118 - Public kiosk input lock (WebKit engine). Injected into the UI page
+# at document start: no pinch/double-tap/Ctrl zoom, no long-press/right-click
+# menu, no text selection or image dragging outside form fields. Scrolling with
+# one finger and every button/tap keep working. No robot or network authority.
+KIOSK_INPUT_LOCK_SCRIPT = r"""
+(() => {
+  if (window.__camrodKioskLock) return;
+  window.__camrodKioskLock = true;
+  const editable = (target) => target instanceof Element
+    && Boolean(target.closest('input, textarea, [contenteditable="true"]'));
+  const lockViewport = () => {
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'viewport';
+      (document.head || document.documentElement).appendChild(meta);
+    }
+    meta.content = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no';
+  };
+  const style = document.createElement('style');
+  style.id = 'camrod-kiosk-lock';
+  style.textContent = [
+    'html, body { touch-action: pan-x pan-y; overscroll-behavior: none;',
+    '  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }',
+    'img, svg, a { -webkit-user-drag: none; user-drag: none; }',
+    'input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }',
+  ].join('\n');
+  const install = () => {
+    lockViewport();
+    if (!document.getElementById('camrod-kiosk-lock')) {
+      (document.head || document.documentElement).appendChild(style);
+    }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  }
+  install();
+  const block = (event) => { event.preventDefault(); event.stopPropagation(); };
+  const opts = { capture: true, passive: false };
+  // Multi-finger pinch and Safari-style gesture events.
+  document.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); }, opts);
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, opts);
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => document.addEventListener(type, block, opts));
+  // Ctrl/Meta + wheel and Ctrl/Meta + (+ - = 0) zoom.
+  window.addEventListener('wheel', (e) => { if (e.ctrlKey || e.metaKey) block(e); }, opts);
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '_', '0'].includes(e.key)) block(e);
+  }, true);
+  // Long-press / right-click menu, text selection and dragging.
+  document.addEventListener('contextmenu', block, opts);
+  document.addEventListener('selectstart', (e) => { if (!editable(e.target)) e.preventDefault(); }, opts);
+  document.addEventListener('dragstart', (e) => { if (!editable(e.target)) e.preventDefault(); }, opts);
+})();
+"""
+
+
+def _install_kiosk_input_lock(Gdk: Any, GLib: Any, Gtk: Any, WebKit2: Any,
+                              window: Any, web_view: Any, keep_fullscreen: bool) -> list[Any]:
+    """HJ_261118 - Native half of the kiosk input lock.
+
+    Returns objects (gesture controllers) the caller must keep alive.
+    """
+    keep_alive: list[Any] = []
+
+    # Page-level lock injected before the UI scripts run.
+    manager = web_view.get_user_content_manager()
+    manager.add_script(WebKit2.UserScript.new(
+        KIOSK_INPUT_LOCK_SCRIPT,
+        WebKit2.UserContentInjectedFrames.TOP_FRAME,
+        WebKit2.UserScriptInjectionTime.START,
+        None, None,
+    ))
+
+    # No WebKit context menu (long press / right click).
+    web_view.connect("context-menu", lambda *_args: True)
+
+    # Page zoom is pinned at 100 %.
+    web_view.set_zoom_level(1.0)
+
+    def pin_zoom(view: Any, _pspec: Any) -> None:
+        if abs(view.get_zoom_level() - 1.0) > 1e-6:
+            view.set_zoom_level(1.0)
+
+    web_view.connect("notify::zoom-level", pin_zoom)
+
+    # Two-finger pinch (touchscreen and touchpad): claim it on the toplevel in
+    # the capture phase so WebKit's own pinch-zoom gesture never sees it.
+    if hasattr(Gtk, "GestureZoom"):
+        zoom_gesture = Gtk.GestureZoom.new(window)
+        zoom_gesture.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+        def claim_pinch(gesture: Any, _sequence: Any) -> None:
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+
+        zoom_gesture.connect("begin", claim_pinch)
+        keep_alive.append(zoom_gesture)
+
+    ctrl_mask = Gdk.ModifierType.CONTROL_MASK
+    zoom_keys = {
+        getattr(Gdk, name) for name in (
+            "KEY_plus", "KEY_minus", "KEY_equal", "KEY_0", "KEY_KP_Add",
+            "KEY_KP_Subtract", "KEY_KP_0", "KEY_underscore",
+        ) if hasattr(Gdk, name)
+    }
+
+    def on_key(_widget: Any, event: Any) -> bool:
+        if event.state & ctrl_mask and event.keyval in zoom_keys:
+            return True
+        # F11 must not take the public kiosk out of fullscreen.
+        return keep_fullscreen and event.keyval == getattr(Gdk, "KEY_F11", -1)
+
+    def on_scroll(_widget: Any, event: Any) -> bool:
+        return bool(event.state & ctrl_mask)
+
+    window.connect("key-press-event", on_key)
+    window.connect("scroll-event", on_scroll)
+
+    if keep_fullscreen:
+        fullscreen_flag = Gdk.WindowState.FULLSCREEN
+
+        def on_window_state(widget: Any, event: Any) -> bool:
+            if event.changed_mask & fullscreen_flag and not event.new_window_state & fullscreen_flag:
+                GLib.idle_add(lambda: (widget.fullscreen(), False)[1])
+            return False
+
+        window.connect("window-state-event", on_window_state)
+
+    return keep_alive
+
+
 class NavigationGraphicsLease:
     """HH_261006 - Grant WebGL to navigation while our UI is the top-level page.
 
@@ -368,6 +498,10 @@ def _run_webkit(args: argparse.Namespace) -> int:
     window.add(web_view)
     if args.fullscreen:
         window.fullscreen()
+    # HJ_261118 - Public kiosk: block zoom, context menu, selection and drag.
+    kiosk_lock_controllers = _install_kiosk_input_lock(
+        Gdk, GLib, Gtk, WebKit2, window, web_view, bool(args.fullscreen)
+    )
 
     # HH_261006 - Register before loading React so navigation can wait for the
     # native acknowledgement rather than trying WebGL while still disabled.
@@ -600,6 +734,8 @@ def _run_webkit(args: argparse.Namespace) -> int:
     window.show_all()
     start_readiness_probe()
     Gtk.main()
+    # HJ_261118 - Gesture controllers stay referenced for the window lifetime.
+    del kiosk_lock_controllers
     return 0
 
 

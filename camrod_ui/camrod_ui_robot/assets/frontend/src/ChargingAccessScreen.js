@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './ChargingAccessScreen.css';
+import { useLang, useT } from './i18n';
+import LanguageToggle from './LanguageToggle';
 
 const PHASES = ['inactive', 'departing', 'ready', 'error'];
 // HH_261102 - The requested move ends at standstill inside drop_zone; ready is not another locked workflow.
@@ -90,6 +92,9 @@ export function useChargingAccess(connected) {
 export default function ChargingAccessScreen({ access, batteryChargeComplete, onServices, onStop, adminEntry }) {
   const { snapshot, available, pending, error, request } = access;
   const [confirmation, setConfirmation] = useState(null);
+  // HJ_261118 - 손님 화면 한·영 전환.
+  const t = useT();
+  const en = useLang() === 'en';
   const phase = snapshot?.phase || 'inactive';
   const battery = Number.isFinite(snapshot?.battery_percentage) && snapshot.battery_percentage >= 0
     ? snapshot.battery_percentage : null;
@@ -123,63 +128,67 @@ export default function ChargingAccessScreen({ access, batteryChargeComplete, on
     setConfirmation(current => current === 'stop' ? current : null);
   }, [phase, available, snapshot?.platform_feedback_fresh]);
 
-  return <div className="charging-access-screen" data-ui="charging-screen" data-phase={phase}>
+  return <div className="charging-access-screen waiting-theme-forest charging-theme-forest" data-ui="charging-screen" data-phase={phase}>
     {adminEntry}
     <header className="charging-header">
       <div className="charging-brand"><img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
-        <div><span>월악산 국립공원 배송 로봇</span><strong>충전 안내</strong></div></div>
+        <div><span>{t('월악산 국립공원 배송 로봇')}</span><strong>{t('충전 안내')}</strong></div></div>
       <div className="charging-header-actions">
-        <span className={`charging-connection${observed ? '' : ' unavailable'}`}>{observed ? '연결됨' : '연결 확인 중'}</span>
-        <button type="button" className="charging-stop" data-ui="charging-safety-stop" onClick={() => setConfirmation('stop')}>운행 정지</button>
+        {/* HJ_261118 - 충전 중에는 이 화면이 대기 화면을 대신하므로 언어 버튼도 여기 둔다. */}
+        <LanguageToggle />
+        <span className={`charging-connection${observed ? '' : ' unavailable'}`}>{t(observed ? '연결됨' : '연결 확인 중')}</span>
+        <button type="button" className="charging-stop" data-ui="charging-safety-stop" onClick={() => setConfirmation('stop')}>{en ? 'Stop' : '운행 정지'}</button>
       </div>
     </header>
     <main className="charging-content">
-      <section className="charging-status" aria-label="충전 상태">
-        <div className="charging-soc"><span>{observed ? '현재 배터리' : '최근 수신 배터리'}</span><strong>{battery === null ? '—' : battery}<small>%</small></strong></div>
+      <section className="charging-status" aria-label={t('충전 상태')}>
+        <div className="charging-soc"><span>{t(observed ? '현재 배터리' : '최근 수신 배터리')}</span><strong>{battery === null ? '—' : battery}<small>%</small></strong></div>
         <div className="charging-facts">
-          <strong data-ui="charging-contact-state">{charging}</strong>
+          <strong data-ui="charging-contact-state">{t(charging)}</strong>
           <p className={observed && enoughBattery ? 'charging-eligible' : 'charging-ineligible'} data-ui="charging-eligibility">
-            {!observed || battery === null ? '배터리 확인 중 · 출발할 수 없어요'
-              : enoughBattery ? '배터리 준비 완료' : `${minimum}%부터 이용할 수 있어요`}
+            {!observed || battery === null ? t('배터리 확인 중 · 출발할 수 없어요')
+              : enoughBattery ? t('배터리 준비 완료')
+                : (en ? `Available from ${minimum}% battery` : `${minimum}%부터 이용할 수 있어요`)}
           </p>
         </div>
       </section>
       <section className={`charging-task charging-task-${phase}`} aria-live="polite">
-        <h1>{title}</h1>
-        <p data-ui="charging-access-message">{instruction}</p>
-        <p className="charging-safety-note">충전 전원을 끄는 기능은 아닙니다. 충전 접점은 만지지 마세요.</p>
-        {error && <p role="alert" className="charging-error">요청을 확인하지 못했어요. 자세한 안내를 확인해 주세요.</p>}
+        <h1>{t(title)}</h1>
+        <p data-ui="charging-access-message">{t(instruction)}</p>
+        <p className="charging-safety-note">{t('충전 전원을 끄는 기능은 아닙니다. 충전 접점은 만지지 마세요.')}</p>
+        {error && <p role="alert" className="charging-error">{t('요청을 확인하지 못했어요. 자세한 안내를 확인해 주세요.')}</p>}
         <div className="charging-actions">
           {(phase === 'inactive' || phase === 'error') && <button type="button" className="charging-primary" data-ui="charging-access-leave"
-            disabled={!canLeave} onClick={() => setConfirmation('leave')}>앞으로 이동</button>}
+            disabled={!canLeave} onClick={() => setConfirmation('leave')}>{t('앞으로 이동')}</button>}
           {(phase === 'inactive' || phase === 'ready') && <button type="button" className="charging-secondary" data-ui="charging-open-services"
-            disabled={!observed || busy || !enoughBattery || (phase === 'ready' && !ready)} onClick={onServices}>서비스 선택</button>}
+            disabled={!observed || busy || !enoughBattery || (phase === 'ready' && !ready)} onClick={onServices}>{t('서비스 선택')}</button>}
         </div>
-        {pending && <p role="status">요청 중…</p>}
+        {pending && <p role="status">{t('요청 중…')}</p>}
         <details className="charging-details" data-ui="charging-details">
-          <summary>자세한 안내</summary>
-          {snapshot?.message && <p>{snapshot.message}</p>}
-          {snapshot?.blocked_reason && snapshot.blocked_reason !== snapshot.message && <p>{snapshot.blocked_reason}</p>}
-          {error && <p>{error}</p>}
-          <p>정차 위치: {snapshot?.target_label || 'drop_zone 내 대기 위치'}</p>
-          <p>배터리 {minimum}% 이상에서 새 서비스를 이용할 수 있습니다. 충전 신호와 완충 여부는 서로 다릅니다.</p>
-          <p>이동 후 정차하며, 다음 이동은 별도로 서비스를 선택해야 시작됩니다.</p>
+          <summary>{t('자세한 안내')}</summary>
+          {snapshot?.message && <p>{t(snapshot.message)}</p>}
+          {snapshot?.blocked_reason && snapshot.blocked_reason !== snapshot.message && <p>{t(snapshot.blocked_reason)}</p>}
+          {error && <p>{t(error)}</p>}
+          <p>{t('정차 위치:')} {t(snapshot?.target_label || 'drop_zone 내 대기 위치')}</p>
+          <p>{en ? `New services are available at ${minimum}% battery or more. A charging signal does not mean fully charged.`
+            : `배터리 ${minimum}% 이상에서 새 서비스를 이용할 수 있습니다. 충전 신호와 완충 여부는 서로 다릅니다.`}</p>
+          <p>{t('이동 후 정차하며, 다음 이동은 별도로 서비스를 선택해야 시작됩니다.')}</p>
         </details>
       </section>
     </main>
     {confirmation && <div className="move-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="charging-confirm-title">
       <div className="move-confirm-box charging-confirm-box">
-        <h2 id="charging-confirm-title">{confirmation === 'stop' ? '운행을 정지할까요?'
-          : '앞으로 이동할까요?'}</h2>
-        <p>{confirmation === 'stop' ? '진행 중인 미션이 종료됩니다. 긴급 시에는 로봇의 비상정지 버튼을 누르세요.'
-          : '짐과 충전 접점에서 손을 떼고, 로봇 주변을 비워 주세요.'}</p>
+        <h2 id="charging-confirm-title">{t(confirmation === 'stop' ? '운행을 정지할까요?'
+          : '앞으로 이동할까요?')}</h2>
+        <p>{t(confirmation === 'stop' ? '진행 중인 미션이 종료됩니다. 긴급 시에는 로봇의 비상정지 버튼을 누르세요.'
+          : '짐과 충전 접점에서 손을 떼고, 로봇 주변을 비워 주세요.')}</p>
         <div className="move-confirm-btns">
-          <button type="button" className="move-confirm-no" data-ui="charging-confirm-cancel" onClick={() => setConfirmation(null)}>{confirmation === 'stop' ? '아니요' : '취소'}</button>
+          <button type="button" className="move-confirm-no" data-ui="charging-confirm-cancel" onClick={() => setConfirmation(null)}>{t(confirmation === 'stop' ? '아니요' : '취소')}</button>
           {/* HH_261102 - Mission-ending Stop keeps its existing confirmation, independent of movement readiness. */}
           <button type="button" className="move-confirm-yes" data-ui={confirmation === 'stop' ? 'charging-confirm-stop' : 'charging-confirm-move'}
             disabled={confirmation !== 'stop' && !canLeave}
             onClick={() => { setConfirmation(null); if (confirmation === 'stop') onStop(); else request(); }}>
-            {confirmation === 'stop' ? '예 · 운행 정지' : '확인 · 이동'}</button>
+            {t(confirmation === 'stop' ? '예 · 운행 정지' : '확인 · 이동')}</button>
         </div>
       </div>
     </div>}

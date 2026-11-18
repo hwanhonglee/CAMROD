@@ -23,6 +23,9 @@ import {
   ServiceTripBadge,
   useServiceMetricsSummary,
 } from './ServiceEvidence';
+import BringupShutdownControl from './BringupShutdownControl';
+import { localeOf, resetLang, T, useLang, useT } from './i18n';
+import LanguageToggle from './LanguageToggle';
 import SnapshotControl from './SnapshotControl';
 import DrivingDisplay from './DrivingDisplay';
 import { useDrivingDisplayFeed, useDrivingDisplaySnapshot } from './useDrivingDisplay';
@@ -30,6 +33,7 @@ import './DrivingIntegration.css';
 // HH_261026 - Organize native diagnostics without importing simulator controls.
 import AdminNavigation, { getAdminDiagnosticView } from './AdminNavigation';
 import './AdminWorkspace.css';
+import './AdminForestTheme.css';
 // HH_261102 - Charging cargo access has its own confirmed motion flow, not a new customer login.
 import ChargingAccessScreen, { chargingAccessBusy, useChargingAccess } from './ChargingAccessScreen';
 
@@ -337,6 +341,7 @@ function WaitingRuntimeStatusPanel({
   serviceStateDescription,
   batteryChargeComplete,
 }) {
+  const t = useT();
   const items = [
     {
       key: 'system',
@@ -366,13 +371,13 @@ function WaitingRuntimeStatusPanel({
   ];
 
   return (
-    <section className="waiting-runtime-panel" aria-label="로봇 운행 상태" aria-live="polite">
+    <section className="waiting-runtime-panel" aria-label={t('로봇 운행 상태')} aria-live="polite">
       {items.map(item => (
-        <div key={item.key} className={`waiting-runtime-item ${item.tone}`} title={item.title || item.value}>
+        <div key={item.key} className={`waiting-runtime-item ${item.tone}`} title={t(item.title || item.value)}>
           <span className="waiting-runtime-dot" />
           <span className="waiting-runtime-copy">
-            <small>{item.label}</small>
-            <strong>{item.value}</strong>
+            <small>{t(item.label)}</small>
+            <strong>{t(item.value)}</strong>
           </span>
         </div>
       ))}
@@ -384,17 +389,26 @@ function WaitingRuntimeStatusPanel({
 // screen does not re-render whenever only the displayed time has changed.
 function LiveClock() {
   const [currentTime, setCurrentTime] = useState(new Date());
+  // HJ_261118 - 날짜·시각 표기도 선택한 언어를 따른다.
+  const locale = localeOf(useLang());
 
+  // HJ_261118 - Minutes only; re-render once per minute boundary, not every second.
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    let timer;
+    const tick = () => {
+      const now = new Date();
+      setCurrentTime(now);
+      timer = setTimeout(tick, 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
   }, []);
 
-  const dateStr = currentTime.toLocaleDateString('ko-KR', {
-    year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
+  const dateStr = currentTime.toLocaleDateString(locale, {
+    year: 'numeric', month: locale === 'ko-KR' ? 'long' : 'short', day: 'numeric', weekday: 'short'
   });
-  const timeStr = currentTime.toLocaleTimeString('ko-KR', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  const timeStr = currentTime.toLocaleTimeString(locale, {
+    hour: '2-digit', minute: '2-digit'
   });
 
   return (
@@ -425,12 +439,12 @@ function TrailCarousel({ title, images }) {
         className="trail-more-btn"
         onClick={e => { e.stopPropagation(); setIdx(0); setOpen(true); }}
       >
-        더보기
+        <T>더보기</T>
       </button>
       {open && (
         <div className="carousel-overlay" onClick={() => setOpen(false)}>
           <div className="carousel-box" onClick={e => e.stopPropagation()}>
-            <button className="carousel-close-btn" onClick={() => setOpen(false)}>뒤로가기</button>
+            <button className="carousel-close-btn" onClick={() => setOpen(false)}><T>뒤로가기</T></button>
             <div className="carousel-title">{title}</div>
             <div className="carousel-img-wrap">
               <button className="carousel-arrow carousel-arrow-left" onClick={prev}>&#8249;</button>
@@ -462,7 +476,7 @@ export function DiagnosticsMonitor({
   headlightState = false,
   onToggleHeadlight = null,
 }) {
-  const [activeTab, setActiveTab] = useState('system');
+  const [activeTab, setActiveTab] = useState('operation');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
@@ -629,7 +643,8 @@ export function DiagnosticsMonitor({
       <AdminNavigation
         activeTab={activeTab}
         tabs={[
-          { id: 'system', label: '시스템' },
+          { id: 'operation', label: '운영 제어' },
+          { id: 'system', label: '시스템 진단' },
           ...TELEMETRY_TABS,
           { id: 'snapshot', label: '스냅샷' },
         ]}
@@ -656,12 +671,13 @@ export function DiagnosticsMonitor({
           <h2>{activeView.title}</h2>
           <p>{activeView.help}</p>
         </header>
-      {activeTab === 'system' ? (
-        <div className="admin-system-view">
+      {/* HJ_261118 - 운영 제어(복귀·충전, 전조등, 조향, bringup 종료)는 별도 탭, 시스템 진단은 장치 상태만. */}
+      {activeTab === 'operation' ? (
+        <div className="admin-system-view admin-operation-view">
           <section className="admin-system-controls" aria-labelledby="admin-system-controls-title">
             <div className="admin-section-heading">
               <h3 id="admin-system-controls-title">운영 제어</h3>
-              <p>복귀·충전, 전조등과 조향 설정을 조작합니다. 아래 상태 진단과 구분해서 확인하세요.</p>
+              <p>복귀·충전, 전조등과 조향 설정을 조작합니다. 장치 상태는 진단 › 시스템 진단에서 확인하세요.</p>
             </div>
             <div className="admin-system-command-grid">
       {/* ── 상단 컨트롤 바 ── */}
@@ -734,6 +750,10 @@ export function DiagnosticsMonitor({
         </div>
       </div>
           </section>
+          <BringupShutdownControl username={adminLoginId} password={adminLoginPw} />
+        </div>
+      ) : activeTab === 'system' ? (
+        <div className="admin-system-view">
 
       {/* HH_261026 - Collapsing details is presentation-only and leaves refresh policy unchanged. */}
       <details className="admin-diagnostic-details" open>
@@ -873,11 +893,11 @@ function FacilityContent() {
           <div className="park-banner-text">
             <div className="park-banner-label">Korea National Park Service · Woraksan National Park</div>
             <div className="park-banner-breadcrumb">
-              <span>월악산 국립공원</span>
+              <span><T>월악산 국립공원</T></span>
               <span className="park-banner-sep">|</span>
-              <span>닷돈재 야영장</span>
+              <span><T>닷돈재 야영장</T></span>
               <span className="park-banner-sep">|</span>
-              <span className="park-banner-current">시설 안내</span>
+              <span className="park-banner-current"><T>시설 안내</T></span>
             </div>
           </div>
         </div>
@@ -885,27 +905,27 @@ function FacilityContent() {
 
       {/* ── 기본 정보 카드 ── */}
       <div className="facility-section">
-        <div className="facility-section-title">📋 기본 정보</div>
+        <div className="facility-section-title"><T>📋 기본 정보</T></div>
         <div className="facility-info-grid">
           <div className="facility-info-item">
             <span className="fi-icon">📍</span>
             <div>
-              <div className="fi-label">주소</div>
-              <div className="fi-value">충북 제천시 한수면 송계리 70-2</div>
+              <div className="fi-label"><T>주소</T></div>
+              <div className="fi-value"><T>충북 제천시 한수면 송계리 70-2</T></div>
             </div>
           </div>
           <div className="facility-info-item">
             <span className="fi-icon">📞</span>
             <div>
-              <div className="fi-label">문의처</div>
+              <div className="fi-label"><T>문의처</T></div>
               <div className="fi-value">043-653-3252</div>
             </div>
           </div>
           <div className="facility-info-item">
             <span className="fi-icon">🕐</span>
             <div>
-              <div className="fi-label">입 / 퇴실 시간</div>
-              <div className="fi-value">오후 2시 입실 · 익일 낮 12시(정오) 퇴실</div>
+              <div className="fi-label"><T>입 / 퇴실 시간</T></div>
+              <div className="fi-value"><T>오후 2시 입실 · 익일 낮 12시(정오) 퇴실</T></div>
             </div>
           </div>
         </div>
@@ -913,29 +933,29 @@ function FacilityContent() {
 
       {/* ── 이용 금액 ── */}
       <div className="facility-section">
-        <div className="facility-section-title">💰 이용 금액</div>
+        <div className="facility-section-title"><T>💰 이용 금액</T></div>
         <div className="facility-fee-table">
           <div className="fee-row fee-header">
-            <span>구분</span>
-            <span>주말·성수기</span>
-            <span>주중</span>
+            <span><T>구분</T></span>
+            <span><T>주말·성수기</T></span>
+            <span><T>주중</T></span>
           </div>
           <div className="fee-row">
-            <span>🚗 자동차 야영지</span>
-            <span className="fee-peak">30,000원</span>
-            <span className="fee-normal">20,000원</span>
+            <span><T>🚗 자동차 야영지</T></span>
+            <span className="fee-peak"><T>30,000원</T></span>
+            <span className="fee-normal"><T>20,000원</T></span>
           </div>
         </div>
         <div className="facility-notice-small">
-          <p>• 주중: 법정공휴일 전일 제외, 매주 일~목요일</p>
-          <p>• 주말: 매주 금·토요일, 법정공휴일 전일</p>
-          <p>• 성수기: 매해 7.1~8.31, 10.1~11.15</p>
+          <p><T>• 주중: 법정공휴일 전일 제외, 매주 일~목요일</T></p>
+          <p><T>• 주말: 매주 금·토요일, 법정공휴일 전일</T></p>
+          <p><T>• 성수기: 매해 7.1~8.31, 10.1~11.15</T></p>
         </div>
       </div>
 
       {/* ── 편의시설 ── */}
       <div className="facility-section">
-        <div className="facility-section-title">🏕️ 편의시설</div>
+        <div className="facility-section-title"><T>🏕️ 편의시설</T></div>
         <div className="facility-amenity-grid">
           {[
             { icon: '🚿', label: '샤워장', desc: '1동 · 09~13시 / 15~18시\n6분 1,000원, 추가 3분 500원' },
@@ -949,8 +969,8 @@ function FacilityContent() {
           ].map((item, i) => (
             <div key={i} className={`amenity-chip ${item.unavailable ? 'unavailable' : ''}`}>
               <span className="amenity-icon">{item.icon}</span>
-              <span className="amenity-label">{item.label}</span>
-              <span className="amenity-desc">{item.desc}</span>
+              <span className="amenity-label"><T>{item.label}</T></span>
+              <span className="amenity-desc"><T>{item.desc}</T></span>
             </div>
           ))}
         </div>
@@ -958,42 +978,42 @@ function FacilityContent() {
 
       {/* ── 영지 정보 ── */}
       <div className="facility-section">
-        <div className="facility-section-title">🗺️ 영지 구성</div>
+        <div className="facility-section-title"><T>🗺️ 영지 구성</T></div>
         <div className="facility-zone-grid">
           {zones.map((z, i) => (
             <div key={i} className={`zone-chip ${z.note ? 'zone-special' : ''}`}>
               <div className="zone-chip-info">
-                <span className="zone-name">{z.zone}구역</span>
-                <span className="zone-count">{z.count}</span>
-                {z.note && <span className="zone-note">🌿 {z.note}</span>}
+                <span className="zone-name"><T>{`${z.zone}구역`}</T></span>
+                <span className="zone-count"><T>{z.count}</T></span>
+                {z.note && <span className="zone-note">🌿 <T>{z.note}</T></span>}
               </div>
               <button
                 className="zone-map-btn"
                 onClick={e => { e.stopPropagation(); setZoneMap(z.zone); }}
               >
-                위치 안내
+                <T>위치 안내</T>
               </button>
             </div>
           ))}
         </div>
         <div className="facility-notice-small" style={{ marginTop: '0.7rem' }}>
-          <p>• 영지 규격: 가로 5m × 세로 7m (마사토)</p>
-          <p>• 총 113동 운영 (자동차 야영지)</p>
+          <p><T>• 영지 규격: 가로 5m × 세로 7m (마사토)</T></p>
+          <p><T>• 총 113동 운영 (자동차 야영지)</T></p>
         </div>
       </div>
 
       {/* ── 운영 정책 안내 ── */}
       <div className="facility-policy">
-        <div className="facility-section-title" style={{ marginBottom: '0.6rem' }}>⚠️ 운영 정책</div>
-        <p>• 일부 <strong>무공해 영지</strong>를 지정 운영합니다. 전기·수소차, 대중교통·자전거·도보 이용객만 예약 가능합니다.</p>
-        <p>• 운영정책 위반에 따른 책임은 예약자에게 있으니 예약 시 세부 사항을 꼼꼼히 확인해주세요.</p>
+        <div className="facility-section-title" style={{ marginBottom: '0.6rem' }}><T>⚠️ 운영 정책</T></div>
+        <p><T>• 일부 </T><strong><T>무공해 영지</T></strong><T>를 지정 운영합니다. 전기·수소차, 대중교통·자전거·도보 이용객만 예약 가능합니다.</T></p>
+        <p><T>• 운영정책 위반에 따른 책임은 예약자에게 있으니 예약 시 세부 사항을 꼼꼼히 확인해주세요.</T></p>
       </div>
 
       {/* ── 구역 배치도 오버레이 ── */}
       {zoneMap && (
         <div className="zone-map-overlay">
           <div className="zone-map-box">
-            <button className="zone-map-back-btn" onClick={() => setZoneMap(null)}>뒤로가기</button>
+            <button className="zone-map-back-btn" onClick={() => setZoneMap(null)}><T>뒤로가기</T></button>
             <img
               src={`/월악산_배치도_${zoneMap}.png`}
               alt={`${zoneMap}구역 배치도`}
@@ -1008,27 +1028,107 @@ function FacilityContent() {
 }
 
 // ── 대기 화면 우측 버튼 및 모달 콘텐츠 정의 ───────────────────────────────
-// HJ_260922 - 안전 안내 포스터는 [서비스 선택] 진입 직전에서만 보여준다.
-// [로봇 이용 방법]은 여러 번 여는 참고 자료라 매번 관문을 거치게 하지 않는다.
-function SafetyNoticePanel({ onConfirm }) {
+// HJ_261118 - Arrival screen copy. The action each button triggers is unchanged:
+// delivery → usage complete/return; recall B1–B10 first stage → turnaround;
+// recall final stage (or B11–B13) → loading complete/return.
+function arrivalScreenCopy(site, recall, finalReady) {
+  const lidStep = ['lid', '출발 전에 덮개를 꼭 닫아 주세요', '덮개가 닫혀 있는지 한 번 더 확인해 주세요'];
+  const returnStep = ['return', '로봇이 드랍존으로 복귀합니다', '로봇이 출발하면 길을 비켜 주세요'];
+  if (!recall) {
+    return {
+      title: `${site} 사이트에 도착했어요!`,
+      subtitle: '배달 서비스 · 아래 순서대로 진행해 주세요',
+      steps: [['unload', '물건을 내려주세요', '적재함 안의 짐을 모두 꺼내 주세요'], lidStep, returnStep],
+      question: '사용을 종료하시겠습니까?',
+      hint: '짐을 모두 꺼냈다면 눌러 주세요. 로봇이 드랍존으로 돌아가요.',
+      action: '사용 종료',
+      confirmTitle: '사용을 종료할까요?',
+      confirmBody: '확인을 누르면 로봇이 드랍존으로 출발해요. 덮개를 닫고 주변을 비워 주세요.',
+    };
+  }
+  const turnaroundStage = /^B(?:[1-9]|10)$/.test(String(site || '')) && !finalReady;
+  if (turnaroundStage) {
+    return {
+      title: `${site} 사이트 앞에 도착했어요!`,
+      subtitle: '호출 서비스 · 로봇이 사이트 안에서 방향을 돌려요',
+      steps: [
+        ['clear', '주변을 비워 주세요', '로봇이 사이트 안으로 들어가 180도 돌아요'],
+        ['turn', '회전이 끝날 때까지 기다려 주세요', '로봇이 멈추면 짐을 실을 수 있어요'],
+        ['load', '회전 후 짐을 실어 주세요', '다음 화면에서 다시 안내해 드려요'],
+      ],
+      question: '짐 정리를 마치셨나요?',
+      hint: '누르면 로봇이 사이트 안으로 들어가 회전을 시작해요.',
+      action: recallCompletionLabel(site, finalReady),
+      confirmTitle: '회전을 시작할까요?',
+      confirmBody: '확인을 누르면 로봇이 사이트 안으로 들어가 180도 돌아요. 주변을 비워 주세요.',
+    };
+  }
+  return {
+    title: finalReady ? '회전을 마쳤어요! 짐을 실어 주세요' : `${site} 사이트 앞에 도착했어요!`,
+    subtitle: '호출 서비스 · 아래 순서대로 진행해 주세요',
+    steps: [['load', '짐을 실어 주세요', '적재함에 짐을 모두 실어 주세요'], lidStep, returnStep],
+    question: '사용을 종료하시겠습니까?',
+    hint: '짐을 모두 실었다면 눌러 주세요. 로봇이 드랍존으로 돌아가요.',
+    action: recallCompletionLabel(site, finalReady),
+    confirmTitle: '사용을 종료할까요?',
+    confirmBody: '확인을 누르면 로봇이 드랍존으로 출발해요. 덮개를 닫고 주변을 비워 주세요.',
+  };
+}
+
+// HJ_261118 - Simple line illustrations for the arrival steps.
+function ArrivalArt({ kind }) {
+  const robot = (x, y, w = 104, h = 62) => (
+    <>
+      <rect x={x} y={y} width={w} height={h} rx="8" fill="#f4f1ea" stroke="#bfb19b" strokeWidth="3" />
+      <rect x={x + 10} y={y + h} width="18" height="16" rx="4" fill="#3b3733" />
+      <rect x={x + w - 28} y={y + h} width="18" height="16" rx="4" fill="#3b3733" />
+    </>
+  );
+  const arrow = 'none';
+  const ink = { fill: arrow, stroke: '#1f3a2e', strokeWidth: 5, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const box = (x, y) => (
+    <><rect x={x} y={y} width="40" height="34" rx="4" fill="#d8b98a" stroke="#b38e5b" strokeWidth="3" />
+      <path d={`M${x} ${y + 12}H${x + 40}`} stroke="#b38e5b" strokeWidth="3" /></>
+  );
+  const scenes = {
+    unload: <>{robot(30, 58)}{box(140, 96)}<path d="M160 40 V80 M150 70 L160 82 L170 70" {...ink} /></>,
+    load: <>{robot(30, 58)}{box(140, 96)}<path d="M160 86 V44 M150 54 L160 42 L170 54" {...ink} /></>,
+    lid: <>{robot(40, 62, 120, 58)}<rect x="34" y="50" width="132" height="16" rx="6" fill="#6b4a2f" />
+      <circle cx="152" cy="40" r="22" fill="#1f3a2e" /><path d="M142 40 l7 7 l13 -14" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" /></>,
+    return: <><path d="M20 130 Q100 110 180 130" fill="none" stroke="#d7cdb8" strokeWidth="16" strokeLinecap="round" />
+      {robot(96, 62, 76, 46)}<path d="M84 50 H40 M52 38 L38 50 L52 62" {...ink} />
+      <rect x="16" y="72" width="48" height="30" rx="6" fill="#6b4a2f" />
+      <text x="40" y="92" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff"><T>드랍존</T></text></>,
+    clear: <>{robot(48, 58)}<circle cx="100" cy="88" r="70" fill="none" stroke="#6b4a2f" strokeWidth="4" strokeDasharray="10 9" /></>,
+    turn: <>{robot(48, 58)}<path d="M150 40 A56 56 0 1 0 160 96" {...ink} /><path d="M146 92 L162 98 L166 82" {...ink} /></>,
+  };
   return (
-    <div className="usage-safety-intro">
-      <img
-        src={`${process.env.PUBLIC_URL}/로봇안전안내.png`}
-        alt="로봇 주행 안전 수칙 안내"
-        className="usage-safety-image"
-      />
-      <button
-        type="button"
-        className="usage-safety-confirm"
-        data-ui="usage-safety-confirm"
-        onClick={onConfirm}
-      >
-        확인
-      </button>
-    </div>
+    <svg viewBox="0 0 200 150" aria-hidden="true">
+      <ellipse cx="100" cy="140" rx="80" ry="7" fill="#000" opacity=".08" />
+      {scenes[kind] || scenes.unload}
+    </svg>
   );
 }
+
+// HJ_261118 - Line icons for the forest-theme service chooser (white on a bark tile).
+const SERVICE_ICONS = {
+  delivery: (
+    <svg viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="m3 8 9 5 9-5M12 13v8" /></svg>
+  ),
+  recall: (
+    <svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.4" /></svg>
+  ),
+  docking: (
+    <svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="17" height="10" rx="2" /><path d="M22 11v2M11.5 9l-2 3h3l-2 3" /></svg>
+  ),
+};
+
+// HJ_261118 - Home-screen card art and one-line descriptions (forest theme).
+const HOME_CARD_ART = {
+  usage: { image: 'robot_gemini_nobg.png', description: '짐 싣기부터 받기까지 3단계' },
+  facility: { image: 'information_nobg.png', description: '화장실 · 개수대 · 매점 · 관리사무소' },
+  routes: { image: 'hiking_trail_nobg.png', description: '코스별 거리와 난이도' },
+};
 
 const SIDE_BUTTONS = [
   {
@@ -1048,11 +1148,11 @@ const SIDE_BUTTONS = [
             <div className="park-banner-text">
               <div className="park-banner-label">Korea National Park Service · Woraksan National Park</div>
               <div className="park-banner-breadcrumb">
-                <span>월악산 국립공원</span>
+                <span><T>월악산 국립공원</T></span>
                 <span className="park-banner-sep">|</span>
-                <span>닷돈재 야영장</span>
+                <span><T>닷돈재 야영장</T></span>
                 <span className="park-banner-sep">|</span>
-                <span className="park-banner-current">로봇 이용 방법</span>
+                <span className="park-banner-current"><T>로봇 이용 방법</T></span>
               </div>
             </div>
           </div>
@@ -1061,13 +1161,13 @@ const SIDE_BUTTONS = [
 
         {/* ── 1. 서비스 선택 방법 ── */}
         <div className="guide-card">
-          <div className="guide-card-header" style={{ background: 'linear-gradient(135deg,#2d6e40,#43a047)' }}>
+          <div className="guide-card-header guide-card-header-service">
             <svg viewBox="0 0 32 32" fill="none">
               <circle cx="16" cy="14" r="7" stroke="#fff" strokeWidth="2.2"/>
               <circle cx="16" cy="14" r="2.5" fill="#fff"/>
               <path d="M16 21 C10 26 6 29 6 29 L16 27 L26 29 C26 29 22 26 16 21Z" fill="#fff" opacity="0.8"/>
             </svg>
-            <span>서비스 선택 방법</span>
+            <span><T>서비스 선택 방법</T></span>
           </div>
           <div className="guide-card-body">
             <figure className="guide-card-visual">
@@ -1075,34 +1175,34 @@ const SIDE_BUTTONS = [
                 src={`${process.env.PUBLIC_URL}/guide/service-selection.png`}
                 alt="배달 서비스와 호출 서비스를 선택하는 화면"
               />
-              <figcaption>서비스 선택 화면</figcaption>
+              <figcaption><T>서비스 선택 화면</T></figcaption>
             </figure>
             <div className="guide-card-copy">
               <div className="guide-service-definition guide-service-delivery">
                 <div>
-                  <strong>배달 서비스</strong>
-                  <span>캠핑 시작</span>
+                  <strong><T>배달 서비스</T></strong>
+                  <span><T>캠핑 시작</T></span>
                 </div>
-                <p>캠핑을 시작할 때 사용합니다. 드랍존의 캠핑 장비를 선택한 캠핑 사이트 안으로 운반합니다.</p>
+                <p><T>캠핑을 시작할 때 사용합니다. 드랍존의 캠핑 장비를 선택한 캠핑 사이트 안으로 운반합니다.</T></p>
               </div>
               <div className="guide-service-definition guide-service-recall">
                 <div>
-                  <strong>호출 서비스</strong>
-                  <span>캠핑 종료</span>
+                  <strong><T>호출 서비스</T></strong>
+                  <span><T>캠핑 종료</T></span>
                 </div>
-                <p>캠핑을 마칠 때 사용합니다. 로봇을 사이트 도로 측 대기점으로 호출해 장비를 싣고 드랍존으로 복귀합니다.</p>
+                <p><T>캠핑을 마칠 때 사용합니다. 로봇을 사이트 도로 측 대기점으로 호출해 장비를 싣고 드랍존으로 복귀합니다.</T></p>
               </div>
               <div className="guide-service-admin-notice" role="note">
                 <span aria-hidden="true">🔒</span>
-                <p><strong>[충전] 버튼은 관리자 전용 기능입니다.</strong> 이용객은 누르거나 조작하지 마세요.</p>
+                <p><strong><T>[충전] 버튼은 관리자 전용 기능입니다.</T></strong><T> 이용객은 누르거나 조작하지 마세요.</T></p>
               </div>
               {[
                 '대기 화면에서 [서비스 선택]을 누른 뒤 이용 목적에 맞는 서비스를 고릅니다.',
                 '사이트(B1~B13)와 안내를 확인하고 [예]를 누른 뒤 사이트명을 입력합니다.',
               ].map((text, i) => (
                 <div key={i} className="guide-step">
-                  <span className="guide-step-num" style={{ background: '#2d6e40' }}>{i + 1}</span>
-                  <span>{text}</span>
+                  <span className="guide-step-num guide-step-num-service">{i + 1}</span>
+                  <span><T>{text}</T></span>
                 </div>
               ))}
             </div>
@@ -1111,12 +1211,12 @@ const SIDE_BUTTONS = [
 
         {/* ── 2. 로봇 정지 방법 ── */}
         <div className="guide-card">
-          <div className="guide-card-header" style={{ background: 'linear-gradient(135deg,#b71c1c,#e53935)' }}>
+          <div className="guide-card-header guide-card-header-stop">
             <svg viewBox="0 0 32 32" fill="none">
               <circle cx="16" cy="16" r="11" stroke="#fff" strokeWidth="2.2"/>
               <rect x="11" y="11" width="10" height="10" rx="2" fill="#fff"/>
             </svg>
-            <span>로봇 정지 방법</span>
+            <span><T>로봇 정지 방법</T></span>
           </div>
           <div className="guide-card-body">
             <figure className="guide-card-visual">
@@ -1124,7 +1224,7 @@ const SIDE_BUTTONS = [
                 src={`${process.env.PUBLIC_URL}/guide/robot-stop.png`}
                 alt="운행 정지 안내와 예 버튼이 표시된 주행 화면"
               />
-              <figcaption>주행 화면의 정지 버튼</figcaption>
+              <figcaption><T>주행 화면의 정지 버튼</T></figcaption>
             </figure>
             <div className="guide-card-copy">
               {[
@@ -1133,8 +1233,8 @@ const SIDE_BUTTONS = [
                 '화면에 “운행이 정지되었습니다”가 표시되는지 확인합니다.',
               ].map((text, i) => (
                 <div key={i} className="guide-step">
-                  <span className="guide-step-num" style={{ background: '#b71c1c' }}>{i + 1}</span>
-                  <span>{text}</span>
+                  <span className="guide-step-num guide-step-num-stop">{i + 1}</span>
+                  <span><T>{text}</T></span>
                 </div>
               ))}
             </div>
@@ -1181,11 +1281,11 @@ const SIDE_BUTTONS = [
             <div className="park-banner-text">
               <div className="park-banner-label">Korea National Park Service · Woraksan National Park</div>
               <div className="park-banner-breadcrumb">
-                <span>월악산 국립공원</span>
+                <span><T>월악산 국립공원</T></span>
                 <span className="park-banner-sep">|</span>
-                <span>닷돈재 야영장</span>
+                <span><T>닷돈재 야영장</T></span>
                 <span className="park-banner-sep">|</span>
-                <span className="park-banner-current">탐방로 안내</span>
+                <span className="park-banner-current"><T>탐방로 안내</T></span>
               </div>
             </div>
           </div>
@@ -1196,7 +1296,7 @@ const SIDE_BUTTONS = [
           <svg width="22" height="22" viewBox="0 0 24 24" fill="#e65100">
             <path d="M12 2L1 21h22L12 2zm0 3.5L20.5 20h-17L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/>
           </svg>
-          <span>입산 이전 통제 상황을 반드시 확인해주세요</span>
+          <span><T>입산 이전 통제 상황을 반드시 확인해주세요</T></span>
         </div>
 
         {/* ── 탐방로 카드 그리드 ── */}
@@ -1212,20 +1312,20 @@ const SIDE_BUTTONS = [
             { name: '영봉코스 (덕주사 출발)',   start: '덕주',        time: '3시간 40분 이상',  dist: '편도 약 6km',   color: '#1b5e20', images: ['월악산_영봉코스_덕주사_출발1.jpg','월악산_영봉코스_덕주사_출발2.jpg'] },
           ].map((trail, i) => (
             <div key={i} className="trail-card" style={{ borderLeftColor: trail.color }}>
-              <div className="trail-card-name">{trail.name}</div>
+              <div className="trail-card-name"><T>{trail.name}</T></div>
               <div className="trail-card-meta">
                 <span className="trail-meta-item">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                  {trail.start}
+                  <T>{trail.start}</T>
                 </span>
                 <span className="trail-meta-item">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
-                  {trail.time}
+                  <T>{trail.time}</T>
                 </span>
                 {trail.dist && (
                   <span className="trail-meta-item">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M1.5 4v5h5L12 3l5.5 6h5V4H1.5zM12 19l-5.5-6H1.5v5h21v-5h-5L12 19z"/></svg>
-                    {trail.dist}
+                    <T>{trail.dist}</T>
                   </span>
                 )}
               </div>
@@ -1235,7 +1335,7 @@ const SIDE_BUTTONS = [
         </div>
 
         {/* ── 하단 안내 ── */}
-        <p className="trail-footer-note">※ 기상 상황 및 계절에 따라 입산이 통제될 수 있습니다. 안전한 탐방을 위해 공단 안내에 따라주세요.</p>
+        <p className="trail-footer-note"><T>※ 기상 상황 및 계절에 따라 입산이 통제될 수 있습니다. 안전한 탐방을 위해 공단 안내에 따라주세요.</T></p>
       </div>
     ),
   },
@@ -1276,6 +1376,24 @@ const SIDE_BUTTONS = [
 
 // ── 관리할 사이트 목록 (toggle_publisher.py의 SITE_NAMES와 동일) ──────────
 const SITE_NAMES = Array.from({ length: 13 }, (_, i) => `B${i + 1}`);
+// HJ_261118 - A site's zone is the leading letters of its id (B13 → B), so adding
+// A1…/C1… sites to SITE_NAMES creates the A/C zone tabs without UI changes.
+const siteZone = site => (String(site).match(/^[A-Za-z]+/) || [''])[0].toUpperCase();
+// HJ_261118 - TEMPORARY placeholder zones shown on the site board only. They are not in
+// SITE_NAMES (the backend rejects unknown sites), render as "준비 중" and cannot be
+// selected. Move a site into SITE_NAMES once map/planning support it; delete when done.
+const PLANNED_SITES = [
+  ...Array.from({ length: 22 }, (_, i) => `A${i + 1}`),
+  ...Array.from({ length: 8 }, (_, i) => `C${i + 1}`),
+].filter(site => !SITE_NAMES.includes(site));
+const BOARD_SITES = [...SITE_NAMES, ...PLANNED_SITES];
+const isPlannedSite = site => PLANNED_SITES.includes(site);
+const SITE_ZONES = Array.from(new Set(BOARD_SITES.map(siteZone))).sort();
+const DEFAULT_SITE_ZONE = SITE_NAMES.length ? siteZone(SITE_NAMES[0]) : (SITE_ZONES[0] || '');
+const sitesInZone = zone => BOARD_SITES.filter(site => siteZone(site) === zone);
+// Up to 16 sites (4 × 4) fit one board page; larger zones page within the zone.
+const ZONE_PAGE_SIZE = 16;
+const sitePageInZone = site => Math.max(0, Math.floor(sitesInZone(siteZone(site)).indexOf(site) / ZONE_PAGE_SIZE));
 
 // ── 사이트별 이미지 파일 매핑 ─────────────────────────────────────────────
 const SITE_IMAGES = {
@@ -1342,6 +1460,9 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // HH_261001 - Local preview renders this SAME application. Only its data source changes;
   // all robot-network authority is explicitly disabled in preview mode.
   const previewMode = drivingPreviewSnapshot !== null;
+  // HJ_261118 - 손님 화면 언어(한·영). 관리자 화면은 번역하지 않는다.
+  const lang = useLang();
+  const t = useT();
   // ── React 상태(State) 선언 ──────────────────────────────────────────────
   const [states, setStates] = useState(() => {
     const init = {};
@@ -1356,7 +1477,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // HH_261002 - Present charging completion only after the backend confirms
   // BMS full status or 100% SOC during an active charging session.
   const [batteryChargeComplete, setBatteryChargeComplete] = useState(false);
-  const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
+  const [togglePage, setTogglePage] = useState(0);   // HJ_261118 - page within the active zone
+  const [siteZoneTab, setSiteZoneTab] = useState(DEFAULT_SITE_ZONE);
   const [engageState, setEngageState] = useState(false);
   // HH_260721 - Display operational progress independently from diagnostic health.
   const [serviceStateName, setServiceStateName] = useState('PREPARING');
@@ -1384,7 +1506,6 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const [showWaiting, setShowWaiting] = useState(true); // 대기 화면 표시 여부
   const [showServiceSelection, setShowServiceSelection] = useState(false);
   // 서비스 선택 전 안전 안내를 보여주는 중인지 여부
-  const [showServiceSafetyGate, setShowServiceSafetyGate] = useState(false);
   const wsRef = useRef(null);
   // Treat every reconnect as a new authority channel. Callbacks from a closed
   // socket must never roll the current mission back to an older snapshot.
@@ -1422,6 +1543,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const [activeRecallSite, setActiveRecallSite] = useState(null);
   const [arrivedSite, setArrivedSite] = useState(null);           // 도착 완료 사이트
   const [showArrivalComplete, setShowArrivalComplete] = useState(false); // 이용 완료 팝업
+  // HJ_261118 - Second confirmation before an arrival action makes the robot move.
+  const [arrivalConfirmOpen, setArrivalConfirmOpen] = useState(false);
   const [isReturning, setIsReturning] = useState(false);                 // Drop Zone 복귀 중
   const [activeModal, setActiveModal] = useState(null);           // 현재 열린 모달 ID
   const [showLoginModal, setShowLoginModal] = useState(false);   // 설정 로그인 모달
@@ -1437,8 +1560,6 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
   const [stopConfirmation, setStopConfirmation] = useState(null); // HH_261001 - Second confirmation for the stop button.
   const [showDockingConfirm, setShowDockingConfirm] = useState(false);
-  const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
-  const [showRecallConfirm, setShowRecallConfirm] = useState(false);
   const [serviceDockingPending, setServiceDockingPending] = useState(false);
   const [serviceDockingStatus, setServiceDockingStatus] = useState('');
   const serviceDockingPendingRef = useRef(false);
@@ -1507,11 +1628,11 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     setIsReturning(['RETURNING_TO_DROP_ZONE', 'RETURN_WITH_CARGO', 'DROP_ZONE_PARKING'].includes(previewServiceState));
     setShowWaiting(!previewActive);
     setShowServiceSelection(false);
-    setShowServiceSafetyGate(false);
     setShowArrivalComplete(false);
     setSelectedSite(null);
     setArrivedSite(null);
-    setTogglePage(previewSite === 'B7' ? 1 : 0);
+    setSiteZoneTab(previewSite ? siteZone(previewSite) : DEFAULT_SITE_ZONE);
+    setTogglePage(previewSite ? sitePageInZone(previewSite) : 0);
   }, [previewMode, previewConnected, previewBattery, previewActive, previewGeneration,
     previewSite, previewIntent, previewServiceState, previewPhase, previewDescription]);
 
@@ -1653,7 +1774,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const guestAdmissionStatus = guestAdmissionMessage ? (
     <span data-ui="guest-admission-status" role="status" aria-live="polite"
       style={{ display: 'block', fontSize: '0.85rem', position: 'static', pointerEvents: 'none' }}>
-      {guestAdmissionMessage}
+      {t(guestAdmissionMessage)}
     </span>
   ) : null;
   const guestOwnsReturn =
@@ -1670,8 +1791,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     // HH_261002 - A diagnostic ERROR during an accepted safety hold is a
     // warning to show in the driving view, not a reason to abandon that view.
     // Mission errors and operator modals still own their existing screens.
-    blocked: showLoginModal || Boolean(activeModal) || showServiceSafetyGate
-      || showMoveConfirm || showDeliveryConfirm || showRecallConfirm
+    blocked: showLoginModal || Boolean(activeModal)
+      || showMoveConfirm
       || showMoveVerify || showDockingConfirm || Boolean(missionExecutionError)
       || (showArrivalComplete && arrivedSite && robotOwnsReturn
         && !recallTurnaroundInProgress),
@@ -1689,23 +1810,19 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
     return hour >= OPERATING_HOURS_START || hour < OPERATING_HOURS_END;
   };
+  // HJ_261118 - Drives the home hero's "ready / outside hours" status line.
+  const operatingNow = isWithinOperatingHours();
 
   // ── 대기 화면 터치 핸들러 (운영시간 체크) ──────────────────────────────
   const handleWaitingClick = () => {
     if (chargingAccessLocked) return;
-    if (isWithinOperatingHours()) {
-      // 안전 수칙을 먼저 보여주고, [확인]을 누른 뒤에만 서비스 선택으로 넘긴다.
-      setShowServiceSafetyGate(true);
-    } else {
+    if (!isWithinOperatingHours()) {
       setOutsideHoursMsg(true);
       setTimeout(() => setOutsideHoursMsg(false), 3000);
+      return;
     }
-  };
-
-  // 안전 안내 확인 → 배송 서비스 선택 화면
-  const handleServiceSafetyConfirm = () => {
-    if (chargingAccessLocked) return;
-    setShowServiceSafetyGate(false);
+    // HJ_261118 - Go straight to the service chooser; the safety poster gate
+    // before it was removed at the operator's request.
     // Pin the public chooser immediately, not only after role selection:
     // idle station heartbeats are status, not navigation commands.
     intentPinnedRef.current = true;
@@ -1743,8 +1860,6 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // service menu instead of inheriting the previous role.
   useEffect(() => {
     if (showWaiting) intentPinnedRef.current = false;
-    // 대기 화면이 바뀔 때마다 안전 안내를 닫아, 다음 이용객이 다시 처음부터 본다.
-    setShowServiceSafetyGate(false);
   }, [showWaiting]);
 
   // An accepted or already-running mission must always show the live control
@@ -2485,6 +2600,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   const handleToggle = (site) => {
     if (chargingAccessLocked) return;
+    // HJ_261118 - Placeholder (planned) sites are display-only.
+    if (isPlannedSite(site)) return;
     // HH_260723 - Occupancy blocks physical campsite entry, not the typed
     // roadside recall used when a tent is already installed at the site.
     if (
@@ -2550,6 +2667,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   };
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
+  const requestArrivalComplete = () => {
+    if (previewMode || returnRequestPending) return;
+    setArrivalConfirmOpen(true);
+  };
+  const confirmArrivalComplete = () => {
+    setArrivalConfirmOpen(false);
+    handleArrivalComplete();
+  };
   const handleArrivalComplete = () => {
     if (previewMode) return;
     if (missionExecutionErrorRef.current) {
@@ -2619,9 +2744,9 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   );
   const missionExecutionWarning = missionExecutionError && (
     <div role="alert" className="mission-block-msg" style={{ color: '#b42318', padding: '1rem', background: '#fff0ee' }}>
-      <p>{missionExecutionFailureMessage(missionExecutionError)}</p>
+      <p>{t(missionExecutionFailureMessage(missionExecutionError))}</p>
       <details data-ui="operator-mission-error-details">
-        <summary>상세 원인</summary>
+        <summary>{t('상세 원인')}</summary>
         <p style={{ overflowWrap: 'anywhere' }}>{missionExecutionError}</p>
       </details>
     </div>
@@ -2629,6 +2754,25 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const missionSelectionLocked = Boolean(
     anyOn || isReturning || activeRecallSite || recallRequestPending || chargingAccessLocked
   );
+  // HJ_261118 - 키오스크는 여러 손님이 차례로 쓰므로 영어 선택을 다음 손님에게 남기지 않는다:
+  // 서비스(미션)가 끝나면 한국어로 되돌린다. 대기 화면 무입력으로는 되돌리지 않는다(운영 요청).
+  const langMissionActiveRef = useRef(missionDispatch.active);
+  useEffect(() => {
+    if (langMissionActiveRef.current && !missionDispatch.active) resetLang();
+    langMissionActiveRef.current = missionDispatch.active;
+  }, [missionDispatch.active]);
+
+  // HJ_261118 - Never leave the arrival confirmation open for a stale arrival.
+  useEffect(() => {
+    setArrivalConfirmOpen(false);
+  }, [arrivedSite, recallFinalReturnReady, recallTurnaroundInProgress, robotOwnsReturn]);
+  // HJ_261118 - Keep the zone tab/page on the site the visitor or mission is about.
+  const focusedSite = selectedSite || activeSite || activeRecallSite || arrivedSite;
+  useEffect(() => {
+    if (!focusedSite || !SITE_NAMES.includes(focusedSite)) return;
+    setSiteZoneTab(siteZone(focusedSite));
+    setTogglePage(sitePageInZone(focusedSite));
+  }, [focusedSite]);
   const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
   const serviceEvidenceModalOpen = activeModal === 'service-evidence';
   const serviceEvidenceModal = serviceEvidenceModalOpen ? (
@@ -2678,7 +2822,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // from tearing down telemetry subscriptions while an operator is observing.
   if (showLoginModal || activeModal === 'settings') {
     return (
-      <div className="admin-runtime-shell">
+      <div className="admin-runtime-shell waiting-theme-forest admin-theme-forest">
         {showLoginModal ? (
           <div className="modal-overlay">
             <div className="modal-box login-modal-box" data-ui="operator-admin-login-modal" onClick={e => e.stopPropagation()}>
@@ -2781,77 +2925,53 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     || (chargingPhase === 'ready' && !(cargoAccessReady && cargoReadyNoticeExpired))
     || ['CHARGING', 'WAITING_FOR_CHARGING'].includes(serviceStateName);
   if (!previewMode && (chargingAccessLocked || chargingPhase === 'error'
-    || (showWaiting && !showServiceSafetyGate && !activeModal && !missionDispatch.active
+    || (showWaiting && !activeModal && !missionDispatch.active
       && chargingStandby))) {
     return <ChargingAccessScreen access={chargingAccess} batteryChargeComplete={batteryChargeComplete}
       onServices={handleWaitingClick} onStop={handleStopMove} adminEntry={adminEntryZone} />;
   }
 
+  // HJ_261118 - Shared forest-theme header for the home and service-selection
+  // screens: logo/title, battery pill and clock (WiFi and the idle map entry
+  // were removed at the operator's request).
+  const renderForestHeader = ({ admissionStatus = null } = {}) => (
+    <>
+      <div className="waiting-header">
+        <div className="wh-content">
+          <div className="wh-left">
+            <div className="wh-logo">
+              <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
+            </div>
+            <div className="wh-title-block">
+              <span className="wh-subtitle">{t('국립공원공단 · Woraksan National Park')}</span>
+              <span className="wh-main-title">
+                {lang === 'en' ? t('월악산 국립공원 배송 로봇') : <>월악산 <em>국립공원</em> 배송 로봇</>}
+              </span>
+              {admissionStatus}
+            </div>
+          </div>
+          <div className="wh-right-group">
+            <LanguageToggle />
+            <div className="wh-battery wh-battery-pill">
+              <BatteryIcon pct={batteryPct} />
+              <span className="wh-battery-label">
+                {batteryPct === null ? '–%' : `${batteryPct}%`}
+              </span>
+            </div>
+            <LiveClock />
+          </div>
+        </div>
+      </div>
+      <div className="waiting-header-accent" aria-hidden="true" />
+    </>
+  );
+
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
     return (
-      <div className="waiting-screen" data-ui="operator-waiting-screen">
+      <div className="waiting-screen waiting-theme-forest" data-ui="operator-waiting-screen">
         {/* ── 상단 헤더 배너 ── */}
-        <div className="waiting-header">
-          {/* [REMOVED decorative sky/sun/cloud/bird/mountain elements — replaced with clean white header] */}
-          {false && <svg className="wh-mountains" viewBox="0 0 1200 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="0,160 80,70 160,110 260,50 360,95 460,45 520,80 600,30 680,75 780,40 860,80 960,35 1060,70 1140,50 1200,65 1200,160" fill="#6aa8d4" opacity="0.45"/>
-            <polygon points="0,160 60,100 140,130 220,80 300,115 400,65 480,100 560,55 640,90 720,60 800,95 880,55 960,85 1040,60 1120,80 1200,65 1200,160" fill="#4a8c6a" opacity="0.6"/>
-            <polygon points="560,55 575,38 590,30 605,38 620,55 600,50" fill="white" opacity="0.9"/>
-            <polygon points="780,40 793,26 803,18 815,26 828,40 810,35" fill="white" opacity="0.85"/>
-            <polygon points="956,35 967,22 976,15 986,22 998,35 978,30" fill="white" opacity="0.8"/>
-            <ellipse cx="200" cy="160" rx="260" ry="70" fill="#2d6e40"/>
-            <ellipse cx="650" cy="165" rx="320" ry="75" fill="#1e5930"/>
-            <ellipse cx="1050" cy="165" rx="280" ry="72" fill="#265938"/>
-            <rect x="0" y="130" width="1200" height="30" fill="#2a6636"/>
-            <ellipse cx="0" cy="138" rx="80" ry="18" fill="#2e7040"/>
-            <ellipse cx="300" cy="140" rx="100" ry="16" fill="#347a44"/>
-            <ellipse cx="700" cy="138" rx="120" ry="18" fill="#2e7040"/>
-            <ellipse cx="1100" cy="140" rx="90" ry="16" fill="#2a6636"/>
-            <g transform="translate(60,80)"><rect x="-3" y="30" width="6" height="22" fill="#5a3010"/><polygon points="0,0 16,35 -16,35" fill="#1a6030"/><polygon points="0,8 13,38 -13,38" fill="#228040"/></g>
-            <g transform="translate(95,88)"><rect x="-2.5" y="26" width="5" height="18" fill="#5a3010"/><polygon points="0,0 13,30 -13,30" fill="#1a6030"/><polygon points="0,6 11,32 -11,32" fill="#228040"/></g>
-            <g transform="translate(36,92)"><rect x="-2" y="22" width="4" height="16" fill="#5a3010"/><polygon points="0,0 11,26 -11,26" fill="#155028"/><polygon points="0,5 9,28 -9,28" fill="#1a6030"/></g>
-            <g transform="translate(1100,75)"><rect x="-3" y="32" width="6" height="24" fill="#5a3010"/><polygon points="0,0 17,38 -17,38" fill="#1a6030"/><polygon points="0,8 14,40 -14,40" fill="#228040"/></g>
-            <g transform="translate(1140,84)"><rect x="-2.5" y="26" width="5" height="20" fill="#5a3010"/><polygon points="0,0 14,32 -14,32" fill="#155028"/><polygon points="0,6 11,34 -11,34" fill="#1a6030"/></g>
-            <g transform="translate(1165,90)"><rect x="-2" y="20" width="4" height="16" fill="#5a3010"/><polygon points="0,0 10,24 -10,24" fill="#228040"/></g>
-            <g transform="translate(830,105)"><polygon points="0,35 20,-5 40,35" fill="#e05020"/><polygon points="8,35 20,8 32,35" fill="#ff6a30"/><rect x="12" y="25" width="16" height="10" fill="#1a1a1a" opacity="0.7" rx="2"/></g>
-            <g transform="translate(870,110)"><polygon points="0,28 15,-2 30,28" fill="#2060c0"/><polygon points="6,28 15,4 24,28" fill="#3a80e0"/><rect x="10" y="20" width="10" height="8" fill="#1a1a1a" opacity="0.7" rx="1"/></g>
-            <g transform="translate(856,128)"><ellipse cx="0" cy="5" rx="8" ry="3" fill="#5a3010"/><polygon points="-3,4 0,-8 3,4" fill="#ff4400" opacity="0.9"/><polygon points="-2,4 0,-5 2,4" fill="#ffaa00" opacity="0.85"/><polygon points="-1,4 0,-3 1,4" fill="#fff0a0" opacity="0.8"/></g>
-            <g transform="translate(180,92)"><circle cx="0" cy="-2" r="5" fill="#f4c078"/><rect x="-4" y="3" width="8" height="12" fill="#3a6ab0" rx="1"/><rect x="3" y="3" width="5" height="9" fill="#8b6040" rx="1"/><line x1="-4" y1="15" x2="-6" y2="26" stroke="#3a4060" strokeWidth="2" strokeLinecap="round"/><line x1="4" y1="15" x2="6" y2="26" stroke="#3a4060" strokeWidth="2" strokeLinecap="round"/><line x1="8" y1="5" x2="12" y2="28" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/><ellipse cx="0" cy="-6" rx="6" ry="2.5" fill="#c08030"/><ellipse cx="0" cy="-8" rx="3.5" ry="3" fill="#c08030"/></g>
-            <g transform="translate(205,97)"><circle cx="0" cy="-2" r="4.5" fill="#f0a878"/><rect x="-3.5" y="3" width="7" height="11" fill="#c04060" rx="1"/><rect x="2.5" y="3" width="4.5" height="8" fill="#7a5030" rx="1"/><line x1="-3.5" y1="14" x2="-5" y2="24" stroke="#3a3050" strokeWidth="2" strokeLinecap="round"/><line x1="3.5" y1="14" x2="5" y2="24" stroke="#3a3050" strokeWidth="2" strokeLinecap="round"/><line x1="6" y1="5" x2="9" y2="26" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/><ellipse cx="0" cy="-6" rx="5.5" ry="2" fill="#206040"/><ellipse cx="0" cy="-7.5" rx="3" ry="2.8" fill="#206040"/></g>
-            <path d="M 140,160 Q 200,145 260,155 Q 320,148 380,158" stroke="#c8a870" strokeWidth="4" fill="none" opacity="0.7" strokeLinecap="round"/>
-          </svg>}
-
-          <div className="wh-content">
-            <div className="wh-left">
-              <div className="wh-logo">
-                <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
-              </div>
-              <div className="wh-title-block">
-                <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
-                <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
-                {guestAdmissionStatus}
-              </div>
-            </div>
-            <div className="wh-right-group">
-              {drivingDisplay.canOpen && !drivingDisplay.visible && !missionDispatch.active && (
-                <button type="button" className="idle-map-open" data-ui="open-idle-navigation-map"
-                  onClick={drivingDisplay.open}>주행 지도 보기</button>
-              )}
-              <div className="wh-wifi">
-                <WifiIcon level={signalLevel} />
-                <span className="wh-wifi-label">WIFI</span>
-              </div>
-              <div className="wh-battery">
-                <BatteryIcon pct={batteryPct} />
-                <span className="wh-battery-label">
-                  {batteryPct === null ? '–%' : `${batteryPct}%`}
-                </span>
-              </div>
-              <LiveClock />
-            </div>
-          </div>
-        </div>
+        {renderForestHeader({ admissionStatus: guestAdmissionStatus })}
 
         <WaitingRuntimeStatusPanel
           systemHealth={systemHealth}
@@ -2875,35 +2995,47 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             onOpen={() => setActiveModal('service-evidence')}
           />
 
-          {/* ── 서비스 선택 ── */}
-          <button className="waiting-grid-btn" data-ui="operator-open-destination" onClick={handleWaitingClick}>
-            <span className="waiting-grid-btn-icon waiting-grid-btn-icon-destination">
-              <img
-                src={`${process.env.PUBLIC_URL}/서비스_선택.png`}
-                alt="서비스 선택"
-                className="waiting-grid-btn-icon-img"
-              />
-            </span>
-            {outsideHoursMsg
-              ? <span className="waiting-text outside-hours">현재는 운영시간이 아닙니다.</span>
-              : <span className="waiting-grid-btn-label">서비스 선택</span>
-            }
-          </button>
-
-          {/* ── 시설 안내 / 탐방로 ── */}
-          {SIDE_BUTTONS.filter(btn => btn.id !== 'settings').map(btn => (
-            <button
-              key={btn.id}
-              className="waiting-grid-btn"
-              onClick={e => {
-                e.stopPropagation();
-                setActiveModal(btn.id);
-              }}
-            >
-              <span className="waiting-grid-btn-icon">{btn.icon}</span>
-              <span className="waiting-grid-btn-label">{btn.label}</span>
+          {/* ── HJ_261118 - 서비스 영역: 왼쪽 서비스 선택(대표 카드) + 오른쪽 안내 3종 ── */}
+          <div className="waiting-services">
+            <button className="waiting-hero" data-ui="operator-open-destination" onClick={handleWaitingClick}>
+              <span className={`waiting-hero-ready${operatingNow ? '' : ' closed'}`}>
+                <i aria-hidden="true" />
+                {t(operatingNow ? '지금 바로 출발할 수 있어요' : '현재는 운영시간이 아닙니다')}
+              </span>
+              <span className="waiting-hero-title">{t('서비스 선택')}</span>
+              {outsideHoursMsg
+                ? <span className="waiting-hero-desc outside-hours">{t('현재는 운영시간이 아닙니다.')}</span>
+                : <span className="waiting-hero-desc">{t('캠핑 사이트까지 무거운 짐을')}<br />{t('로봇이 대신 옮겨드려요.')}</span>
+              }
+              <span className="waiting-hero-go">
+                {t('시작하기')}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              </span>
             </button>
-          ))}
+
+            <div className="waiting-side">
+              {SIDE_BUTTONS.filter(btn => HOME_CARD_ART[btn.id]).map(btn => (
+                <button
+                  key={btn.id}
+                  className="waiting-side-card"
+                  data-ui={`operator-open-${btn.id}`}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setActiveModal(btn.id);
+                  }}
+                >
+                  <span className="waiting-side-art">
+                    <img src={`${process.env.PUBLIC_URL}/${HOME_CARD_ART[btn.id].image}`} alt="" />
+                  </span>
+                  <span className="waiting-side-text">
+                    <strong>{t(btn.label)}</strong>
+                    <small>{t(HOME_CARD_ART[btn.id].description)}</small>
+                  </span>
+                  <svg className="waiting-side-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* ── 숨겨진 진단 진입 영역 (모든 서비스 화면 공통) ── */}
           {adminEntryZone}
@@ -2914,31 +3046,12 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         {idleMapPanel}
         {serviceEvidenceModal}
 
-        {/* ── 서비스 선택 전 안전 안내 ── */}
-        {showServiceSafetyGate && (
-          <div className="modal-overlay" data-ui="service-safety-gate">
-            <div className="modal-box" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <span className="modal-title">로봇 안전 안내</span>
-                <button
-                  className="modal-back-btn"
-                  onClick={() => setShowServiceSafetyGate(false)}
-                >
-                  뒤로가기
-                </button>
-              </div>
-              <div className="modal-body">
-                <SafetyNoticePanel onConfirm={handleServiceSafetyConfirm} />
-              </div>
-            </div>
-          </div>
-        )}
         {activeModal && activeModal !== 'settings' && modalData && (
           <div className="modal-overlay">
             <div className="modal-box" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <span className="modal-title">{modalData.title}</span>
-                <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
+                <span className="modal-title">{t(modalData.title)}</span>
+                <button className="modal-back-btn" onClick={() => setActiveModal(null)}>{t('뒤로가기')}</button>
               </div>
               <div className="modal-body">{modalData.content}</div>
             </div>
@@ -2948,13 +3061,13 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         {batteryReturnMessage && (
           <div className="move-confirm-overlay mission-block-overlay" onClick={() => setBatteryReturnMessage('')}>
             <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
-              <p className="move-confirm-msg mission-block-msg">{batteryReturnMessage}</p>
+              <p className="move-confirm-msg mission-block-msg">{t(batteryReturnMessage)}</p>
               <div className="move-confirm-btns">
                 <button
                   className="move-confirm-no mission-block-close"
                   onClick={() => setBatteryReturnMessage('')}
                 >
-                  확인
+                  {t('확인')}
                 </button>
               </div>
             </div>
@@ -2967,39 +3080,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   if (showServiceSelection) {
     const dockingAvailable = dockingAllowedAtServiceState(serviceStateName);
     return (
-      <div className="main-layout" data-ui="operator-service-selection-screen">
+      <div className="main-layout waiting-theme-forest" data-ui="operator-service-selection-screen">
         {adminEntryZone}
 
-        <div className="control-header">
-          <div className="ch-content">
-            <div className="ch-left">
-              <div className="ch-logo">
-                <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
-              </div>
-              <div className="ch-title-block">
-                <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
-                <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
-              </div>
-            </div>
-            <div className="ch-right">
-              {drivingDisplay.canOpen && !drivingDisplay.visible && !missionDispatch.active && (
-                <button type="button" className="idle-map-open" data-ui="open-idle-navigation-map"
-                  onClick={drivingDisplay.open}>주행 지도 보기</button>
-              )}
-              <div className="wh-wifi ch-wifi">
-                <WifiIcon level={signalLevel} />
-                <span className="wh-wifi-label">WIFI</span>
-              </div>
-              <div className="wh-battery ch-wifi">
-                <BatteryIcon pct={batteryPct} />
-                <span className="wh-battery-label">
-                  {batteryPct === null ? '–%' : `${batteryPct}%`}
-                </span>
-              </div>
-              <LiveClock />
-            </div>
-          </div>
-        </div>
+        {renderForestHeader()}
 
         {/* 대기 화면과 같은 운행 상태 배너를 서비스 선택 화면에서도 유지한다. */}
         <WaitingRuntimeStatusPanel
@@ -3015,7 +3099,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         <main className="service-selection-body">
           <div className="service-selection-heading">
             {/* HH_261102 - Keep familiar service names and a single short purpose per card. */}
-            <h1>어떤 서비스를 이용하시겠어요?</h1>
+            <h1>{t('어떤 서비스를 이용하시겠어요?')}</h1>
           </div>
 
           <div className="service-selection-grid">
@@ -3023,22 +3107,24 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               type="button"
               className="service-choice-card service-choice-delivery"
               data-ui="operator-intent-delivery"
-              onClick={() => setShowDeliveryConfirm(true)}
+              // HJ_261118 - Delivery goes straight to site selection (confirm dialog removed).
+              onClick={() => activateDestinationService('delivery')}
             >
-              <span className="service-choice-icon" aria-hidden="true">📦</span>
-              <strong>배달 서비스</strong>
-              <span>캠핑 사이트 안으로 짐을 배달해요.</span>
+              <span className="service-choice-icon" aria-hidden="true">{SERVICE_ICONS.delivery}</span>
+              <strong>{t('배달 서비스')}</strong>
+              <span>{t('캠핑 사이트 안으로 짐을 배달해요.')}</span>
             </button>
 
             <button
               type="button"
               className="service-choice-card service-choice-recall"
               data-ui="operator-intent-recall"
-              onClick={() => setShowRecallConfirm(true)}
+              // HJ_261118 - Recall goes straight to site selection (confirm dialog removed).
+              onClick={() => activateDestinationService('recall')}
             >
-              <span className="service-choice-icon" aria-hidden="true">↩</span>
-              <strong>호출 서비스</strong>
-              <span>로봇을 사이트 앞 도로로 불러요.</span>
+              <span className="service-choice-icon" aria-hidden="true">{SERVICE_ICONS.recall}</span>
+              <strong>{t('호출 서비스')}</strong>
+              <span>{t('로봇을 사이트 앞 도로로 불러요.')}</span>
             </button>
 
             <div className="service-selection-dock-wrap">
@@ -3055,12 +3141,12 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 {/* HH_260909 - Operators read "도킹" as jargon. The card, its
                     confirm dialog and its status line now all say 충전; the
                     data-ui hook and CSS class keep the docking identifier. */}
-                <span className="service-choice-icon" aria-hidden="true">🔒</span>
-                <strong>{serviceDockingPending ? '충전 요청 중' : '충전'}</strong>
+                <span className="service-choice-icon" aria-hidden="true">{SERVICE_ICONS.docking}</span>
+                <strong>{t(serviceDockingPending ? '충전 요청 중' : '충전')}</strong>
                 <span>
                   {dockingAvailable
-                    ? '관리자용 · 충전 시작'
-                    : '관리자용 · 주차 위치에서 이용'}
+                    ? t('관리자용 · 충전 시작')
+                    : t('관리자용 · 주차 위치에서 이용')}
                 </span>
               </button>
               {serviceDockingStatus && (
@@ -3076,83 +3162,29 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             className="service-selection-back"
             onClick={() => {
               setShowDockingConfirm(false);
-              setShowDeliveryConfirm(false);
-              setShowRecallConfirm(false);
               setShowServiceSelection(false);
               setShowWaiting(true);
             }}
           >
             {/* HJ_261105 - Name the screen this button actually returns to. */}
-            {chargingStandby ? '← 충전 화면으로' : '← 대기 화면으로'}
+            {t(chargingStandby ? '← 충전 화면으로' : '← 대기 화면으로')}
           </button>
         </main>
 
         {idleMapPanel}
-        {showDeliveryConfirm && (
-          <div className="move-confirm-overlay" onClick={() => setShowDeliveryConfirm(false)}>
-            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
-              <p className="move-confirm-msg">
-                사이트 안으로 짐을 배달해요.<br />
-                텐트와 장비가 이동을 막지 않는지 확인해 주세요.
-              </p>
-              <div className="move-confirm-btns">
-                <button
-                  className="move-confirm-yes"
-                  data-ui="operator-service-delivery-confirm"
-                  onClick={() => {
-                    setShowDeliveryConfirm(false);
-                    activateDestinationService('delivery');
-                  }}
-                >
-                  배달 선택
-                </button>
-                <button className="move-confirm-no" onClick={() => setShowDeliveryConfirm(false)}>
-                  취소
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showRecallConfirm && (
-          <div className="move-confirm-overlay" onClick={() => setShowRecallConfirm(false)}>
-            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
-              <p className="move-confirm-msg">
-                로봇을 사이트 앞 도로로 불러요.<br />
-                사이트 안으로는 들어가지 않아요.
-              </p>
-              <div className="move-confirm-btns">
-                <button
-                  className="move-confirm-yes"
-                  data-ui="operator-service-recall-confirm"
-                  onClick={() => {
-                    setShowRecallConfirm(false);
-                    activateDestinationService('recall');
-                  }}
-                >
-                  호출 선택
-                </button>
-                <button className="move-confirm-no" onClick={() => setShowRecallConfirm(false)}>
-                  취소
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {showDockingConfirm && (
           <div className="move-confirm-overlay" onClick={() => setShowDockingConfirm(false)}>
             <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
               <p className="move-confirm-msg">
-                충전을 시작할까요?<br />
-                배터리 잔량과 관계없이 충전을 요청합니다.
+                {t('충전을 시작할까요?')}<br />
+                {t('배터리 잔량과 관계없이 충전을 요청합니다.')}
               </p>
               <div className="move-confirm-btns">
                 <button className="move-confirm-yes" data-ui="operator-service-docking-confirm" onClick={handleServiceDocking}>
-                  충전 요청
+                  {t('충전 요청')}
                 </button>
                 <button className="move-confirm-no" onClick={() => setShowDockingConfirm(false)}>
-                  취소
+                  {t('취소')}
                 </button>
               </div>
             </div>
@@ -3162,39 +3194,18 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     );
   }
 
+  // HJ_261118 - Site board paging: 16 sites per page within the active zone.
+  const zoneSites = sitesInZone(siteZoneTab);
+  const zonePageCount = Math.max(1, Math.ceil(zoneSites.length / ZONE_PAGE_SIZE));
+  const zonePageSites = zoneSites.slice(togglePage * ZONE_PAGE_SIZE, (togglePage + 1) * ZONE_PAGE_SIZE);
+
   return (
-    <div className={`main-layout${previewMode ? ' driving-preview-app' : ''}${drivingDisplay.visible ? ' main-layout-driving' : ''}`}
+    <div className={`main-layout waiting-theme-forest${previewMode ? ' driving-preview-app' : ''}${drivingDisplay.visible ? ' main-layout-driving' : ''}`}
       data-ui="operator-control-screen">
       {adminEntryZone}
 
-      {/* ── 상단 헤더 배너 ── */}
-      <div className="control-header">
-        <div className="ch-content">
-          <div className="ch-left">
-            <div className="ch-logo">
-              <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
-            </div>
-            <div className="ch-title-block">
-              <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
-              <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
-              {guestAdmissionStatus}
-            </div>
-          </div>
-          <div className="ch-right">
-            <div className="wh-wifi ch-wifi">
-              <WifiIcon level={signalLevel} />
-              <span className="wh-wifi-label">WIFI</span>
-            </div>
-            <div className="wh-battery ch-wifi">
-              <BatteryIcon pct={batteryPct} />
-              <span className="wh-battery-label">
-                {batteryPct === null ? '–%' : `${batteryPct}%`}
-              </span>
-            </div>
-            <LiveClock />
-          </div>
-        </div>
-      </div>
+      {/* ── 상단 헤더 배너 (HJ_261118 - 대기 화면과 같은 숲 테마 헤더) ── */}
+      {renderForestHeader({ admissionStatus: guestAdmissionStatus })}
 
       {/* 대기·서비스 선택 화면과 같은 운행 상태 배너를 목적지 화면에서도 유지한다. */}
       <WaitingRuntimeStatusPanel
@@ -3209,11 +3220,11 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
       {/* ── 역할 배너: 서비스 메뉴에서 확정된 배달/리콜을 바디 전체 폭에 표시 ── */}
       <div className={`mission-role-banner role-${destinationIntent}`}>
-        <strong>{destinationIntent === 'recall' ? '호출 서비스' : '배달 서비스'}</strong>
-        {previewMode && <span className="driving-integrated-demo-label">화면 시연 · 실제 주행 아님</span>}
+        <strong>{t(destinationIntent === 'recall' ? '호출 서비스' : '배달 서비스')}</strong>
+        {previewMode && <span className="driving-integrated-demo-label">{t('화면 시연 · 실제 주행 아님')}</span>}
         {drivingDisplay.canOpen && !drivingDisplay.visible && (
           <button type="button" className="driving-integrated-open" data-ui="open-driving-display"
-            onClick={drivingDisplay.open}>주행 화면 보기</button>
+            onClick={drivingDisplay.open}>{t('주행 화면 보기')}</button>
         )}
       </div>
 
@@ -3232,38 +3243,47 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
         {/* ── 왼쪽: 사이트 이미지 프리뷰 패널 ── */}
         <div className="preview-panel">
+          <div className="preview-panel-main">
           {missionExecutionError ? missionExecutionWarning : missionPhase === 'INITIALIZING' ? (
             <>
-              <span className="preview-placeholder-title">시스템 준비 중</span>
+              <span className="preview-placeholder-title">{t('시스템 준비 중')}</span>
               <span className="preview-placeholder">
-                잠시만 기다려 주세요.
+                {t('잠시만 기다려 주세요.')}
               </span>
             </>
           ) : selectedSite ? (
-            <>
-              <img
-                src={`${process.env.PUBLIC_URL}/${SITE_IMAGES[selectedSite]}`}
-                alt={`${selectedSite} site`}
-                className="preview-image"
-              />
-              <p className="preview-site-name">{selectedSite}</p>
-              <p className="preview-question">
-                {destinationIntent === 'recall'
-                  ? '사이트 앞 도로로 로봇을 부를까요?'
-                  : '이 사이트로 짐을 배달할까요?'}
-              </p>
-              <div className="preview-yn-btns">
-                <button
-                  className="preview-yes-btn"
-                  data-ui="operator-site-preview-confirm"
-                  onClick={() => setShowMoveConfirm(true)}
-                  disabled={recallRequestPending}
-                >
-                  {recallRequestPending ? '요청 중…' : '이 사이트 선택'}
-                </button>
-                <button className="preview-no-btn" onClick={() => setSelectedSite(null)}>다시 선택</button>
+            // HJ_261118 - Selected-site card: photo, zone badge, role, one CTA.
+            <div className="site-pick">
+              {SITE_IMAGES[selectedSite] ? (
+                <img
+                  src={`${process.env.PUBLIC_URL}/${SITE_IMAGES[selectedSite]}`}
+                  alt={`${selectedSite} site`}
+                  className="preview-image site-pick-photo"
+                />
+              ) : (
+                <div className="site-pick-photo site-pick-photo-empty">{t('사이트 사진 준비 중')}</div>
+              )}
+              <div className="site-pick-name">
+                <span className="site-pick-zone">{siteZone(selectedSite)}</span>
+                <p className="preview-site-name">{selectedSite}</p>
+                <span className="site-pick-role">{t(destinationIntent === 'recall' ? '호출' : '배달')}</span>
               </div>
-            </>
+              <p className="site-pick-info">
+                {destinationIntent === 'recall'
+                  ? <>{t('사이트 앞 도로로 로봇이 와요.')}<br />{t('사이트 안으로는 들어가지 않아요.')}</>
+                  : <>{t('사이트 안까지 로봇이 짐을 옮겨드려요.')}<br />{t('텐트와 장비가 길을 막지 않게 해주세요.')}</>}
+              </p>
+              <button
+                className="preview-yes-btn site-pick-go"
+                data-ui="operator-site-preview-confirm"
+                onClick={() => setShowMoveConfirm(true)}
+                disabled={recallRequestPending}
+              >
+                {recallRequestPending
+                  ? t('요청 중…')
+                  : t(destinationIntent === 'recall' ? '여기로 로봇 부르기' : '여기로 짐 보내기')}
+              </button>
+            </div>
           ) : arrivedSite && !recallTurnaroundInProgress ? (
             <>
               <img
@@ -3274,63 +3294,63 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">
                 {recallArrivalPresentation
-                  ? (recallFinalReturnReady ? '사이트 안에서 회전 완료 · 정차 중' : '도로 측 대기점에 도착했습니다.')
-                  : '배송 로봇이 사이트 내부 목적지에 도착했습니다.'}
+                  ? t(recallFinalReturnReady ? '사이트 안에서 회전 완료 · 정차 중' : '도로 측 대기점에 도착했습니다.')
+                  : t('배송 로봇이 사이트 내부 목적지에 도착했습니다.')}
               </p>
               {recallArrivalPresentation && (
                 <p className="preview-question">{recallReturnInstructions(arrivedSite, recallFinalReturnReady)}</p>
               )}
-              {recallFinalReturnReady && batteryReturnState.urgent && <p role="alert" className="preview-question">배터리가 25% 미만입니다. 안전을 위해 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.</p>}
+              {recallFinalReturnReady && batteryReturnState.urgent && <p role="alert" className="preview-question">{t('배터리가 25% 미만입니다. 안전을 위해 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.')}</p>}
               {robotOwnsReturn ? (
                 <button className="preview-return-btn" data-ui="operator-arrival-return"
-                  onClick={handleArrivalComplete} disabled={returnRequestPending}>
-                  {returnRequestPending ? '완료 요청 중…' : recallArrivalPresentation
-                    ? recallCompletionLabel(arrivedSite, recallFinalReturnReady)
+                  onClick={requestArrivalComplete} disabled={returnRequestPending}>
+                  {returnRequestPending ? t('완료 요청 중…') : recallArrivalPresentation
+                    ? t(recallCompletionLabel(arrivedSite, recallFinalReturnReady))
                     /* HH_260909 - Delivery arrival is announced as arrival, not
                        as receipt of goods. The guest screen uses the same word. */
-                    : '도착 완료 · 복귀'}
+                    : t('도착 완료 · 복귀')}
                 </button>
               ) : (
                 <p className="preview-question">
                   {guestOwnsReturn
-                    ? '이 임무의 완료·복귀는 이용객 화면에서 진행합니다.'
-                    : '현재 임무의 복귀 권한을 확인하고 있습니다.'}
+                    ? t('이 임무의 완료·복귀는 이용객 화면에서 진행합니다.')
+                    : t('현재 임무의 복귀 권한을 확인하고 있습니다.')}
                 </p>
               )}
             </>
           ) : ['CHARGING', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING'].includes(serviceStateName) ? (
             <>
               <span className="preview-placeholder-title">
-                {motionNotice?.label || parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy, batteryChargeComplete)}
+                {t(motionNotice?.label || parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy, batteryChargeComplete))}
               </span>
               <p className="preview-returning" aria-live="polite">
-                {motionNotice?.message || (serviceStateName === 'CHARGING'
+                {motionNotice?.message ? t(motionNotice.message) : (serviceStateName === 'CHARGING'
                   ? (batteryChargeComplete
-                    ? '배터리가 100%로 충전되었습니다.'
+                    ? t('배터리가 100%로 충전되었습니다.')
                     : Number.isFinite(Number(batteryPct)) && batteryPct !== null && Number(batteryPct) >= 0
-                      ? `현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.`
-                      : '플랫폼에서 충전 상태가 확인되었습니다.')
+                      ? t(`현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.`)
+                      : t('플랫폼에서 충전 상태가 확인되었습니다.'))
                   : serviceStateName === 'WAITING_FOR_CHARGING'
-                    ? '충전 도킹 정렬이 완료되어 충전 접점 연결을 기다리고 있습니다.'
-                    : '로봇이 대기·충전 장소에서 마지막 주차 동작을 진행하고 있습니다.')}
+                    ? t('충전 도킹 정렬이 완료되어 충전 접점 연결을 기다리고 있습니다.')
+                    : t('로봇이 대기·충전 장소에서 마지막 주차 동작을 진행하고 있습니다.'))}
               </p>
             </>
           ) : displayedReturning ? (
             <>
-              <span className="preview-placeholder-title">대기·충전 장소</span>
-              {recallReturnPresentation && <p className="preview-site-name">{motionNotice?.label || recallProgress.label}</p>}
+              <span className="preview-placeholder-title">{t('대기·충전 장소')}</span>
+              {recallReturnPresentation && <p className="preview-site-name">{t(motionNotice?.label || recallProgress.label)}</p>}
               <p className="preview-returning" aria-live="polite">
-                {motionNotice?.message || (recallReturnPresentation
-                  ? recallProgress.message
+                {motionNotice?.message ? t(motionNotice.message) : (recallReturnPresentation
+                  ? t(recallProgress.message)
                   : serviceStateName === 'WAITING_FOR_CHARGING'
-                  ? '주차를 마치고 충전기 연결을 기다리고 있습니다.'
+                  ? t('주차를 마치고 충전기 연결을 기다리고 있습니다.')
                   : serviceStateName === 'DROP_ZONE_PARKING'
-                    ? '대기·충전 장소에서 주차 중입니다.'
-                    : '배송을 마치고 대기·충전 장소로 복귀 중입니다.')}
+                    ? t('대기·충전 장소에서 주차 중입니다.')
+                    : t('배송을 마치고 대기·충전 장소로 복귀 중입니다.'))}
               </p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">{t('운행을 정지하시겠습니까?')}</p>
               <div className="preview-yn-btns">
-                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>운행 정지</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>{lang === 'en' ? 'Stop' : '운행 정지'}</button>
               </div>
             </>
           ) : activeSite ? (
@@ -3341,10 +3361,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className="preview-moving">{motionNotice?.message || '배송 로봇이 이동중 입니다.'}</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-moving">{t(motionNotice?.message || '배송 로봇이 이동중 입니다.')}</p>
+              <p className="preview-question">{t('운행을 정지하시겠습니까?')}</p>
               <div className="preview-yn-btns">
-                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>운행 정지</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>{lang === 'en' ? 'Stop' : '운행 정지'}</button>
               </div>
             </>
           ) : activeRecallSite ? (
@@ -3354,33 +3374,36 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 alt={`${activeRecallSite} 호출 사이트`}
                 className="preview-image"
               />
-              <p className="preview-site-name">{activeRecallSite} 호출</p>
-              <p className="preview-moving">{motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.'}</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-site-name">{t(`${activeRecallSite} 호출`)}</p>
+              <p className="preview-moving">{t(motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.')}</p>
+              <p className="preview-question">{t('운행을 정지하시겠습니까?')}</p>
               <div className="preview-yn-btns">
-                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>운행 정지</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>{lang === 'en' ? 'Stop' : '운행 정지'}</button>
               </div>
             </>
           ) : manualDriveActive ? (
             <>
-              <span className="preview-placeholder-title">지정 위치로 이동</span>
+              <span className="preview-placeholder-title">{t('지정 위치로 이동')}</span>
               <p className="preview-moving">
-                {motionNotice?.message || MISSION_PHASE_LABELS[missionPhase] || missionPhase}
+                {t(motionNotice?.message || MISSION_PHASE_LABELS[missionPhase] || missionPhase)}
               </p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">{t('운행을 정지하시겠습니까?')}</p>
               <div className="preview-yn-btns">
-                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('manual')}>운행 정지</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('manual')}>{lang === 'en' ? 'Stop' : '운행 정지'}</button>
               </div>
             </>
           ) : serviceStateName === 'OPERATOR_STOPPED' ? (
             <>
-              <span className="preview-placeholder-title">운행 정지</span>
-              <p className="preview-returning">운행이 정지되었습니다.</p>
+              <span className="preview-placeholder-title">{t('운행 정지')}</span>
+              <p className="preview-returning">{t('운행이 정지되었습니다.')}</p>
             </>
           ) : (
             <>
-              <span className="preview-placeholder-title">목적지 선택</span>
-              <span className="preview-placeholder">서비스 선택 버튼을 눌러주세요</span>
+              <span className="preview-placeholder-title">{t('사이트를 골라주세요')}</span>
+              <span className="preview-placeholder">
+                {t(destinationIntent === 'recall' ? '오른쪽에서 로봇을 부를 사이트를 누르면' : '오른쪽에서 짐을 받을 사이트를 누르면')}<br />
+                {t('사진과 함께 여기에 보여드려요.')}
+              </span>
             </>
           )}
           <ServiceTripBadge
@@ -3392,80 +3415,129 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             error={serviceMetrics.error}
             onOpen={() => setActiveModal('service-evidence')}
           />
-        </div>
-
-        {/* ── 오른쪽: 컨트롤 패널 ── */}
-        <div className="app">
-          <h1>{destinationIntent === 'recall' ? '호출 목적지 선택' : '배송 목적지 선택'}</h1>
-          <p className="preview-question" style={{ margin: 0, fontSize: '0.9rem' }}>
-            {destinationIntent === 'recall'
-              ? '텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
-              : '빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.'}
-          </p>
-
-          {/* ── 페이지네이션 래퍼 ── */}
-          <div className="toggle-paginator">
-            {/* 왼쪽 화살표 */}
-            <button
-              className="page-arrow left"
-              onClick={() => setTogglePage(p => Math.max(0, p - 1))}
-              disabled={togglePage === 0}
-            >
-              ◀
-            </button>
-
-            {/* 토글 그리드 (페이지별 6개 또는 나머지) */}
-            <div className="toggle-grid">
-              {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
-                <button
-                  key={site}
-                  data-ui={`operator-site-${site}`}
-                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${missionSelectionLocked && !states[site] ? 'locked' : ''} ${destinationIntent === 'delivery' && occupiedSites.includes(site) ? 'occupied' : ''}`}
-                  onClick={() => handleToggle(site)}
-                  disabled={
-                    missionSelectionLocked
-                    || (
-                      destinationIntent === 'delivery'
-                      && occupiedSites.includes(site)
-                    )
-                  }
-                >
-                  <span className="site-label">{site}</span>
-                  {states[site] && <span className="site-on-badge">ON</span>}
-                  {occupiedSites.includes(site) && (
-                    <span className="site-occupied-badge">
-                      {destinationIntent === 'recall' ? '텐트 · 호출 가능' : '사용 중'}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* 오른쪽 화살표 */}
-            <button
-              className="page-arrow right"
-              onClick={() => setTogglePage(p => Math.min(Math.ceil(SITE_NAMES.length / 6) - 1, p + 1))}
-              disabled={togglePage === Math.ceil(SITE_NAMES.length / 6) - 1}
-            >
-              ▶
-            </button>
           </div>
-
-          {/* 페이지 인디케이터 (점) */}
-          <div className="page-dots">
-            {Array.from({ length: Math.ceil(SITE_NAMES.length / 6) }).map((_, i) => (
-              <span key={i} data-ui={`operator-site-page-${i}`} className={`page-dot ${togglePage === i ? 'active' : ''}`} onClick={() => setTogglePage(i)} />
-            ))}
-          </div>
-
+          {/* HJ_261118 - Back to the service chooser lives at the bottom of the left card. */}
           <button
             className="control-back-btn"
             data-ui="operator-back-to-services"
             onClick={() => setShowServiceSelection(true)}
             disabled={Boolean(activeSite || activeRecallSite || isReturning)}
           >
-            ← 서비스 선택
+            {t('← 서비스 선택')}
           </button>
+        </div>
+
+        {/* ── 오른쪽: 구역 탭 + 사이트 판 (HJ_261118) ── */}
+        <div className="app site-board">
+          <div className="site-zone-tabs" role="tablist">
+            {SITE_ZONES.map(zone => {
+              const zoneSites = sitesInZone(zone).filter(site => !isPlannedSite(site));
+              const count = destinationIntent === 'recall'
+                ? zoneSites.filter(site => occupiedSites.includes(site)).length
+                : zoneSites.filter(site => !occupiedSites.includes(site)).length;
+              return (
+                <button
+                  key={zone}
+                  type="button"
+                  role="tab"
+                  aria-selected={zone === siteZoneTab}
+                  data-ui={`operator-site-zone-${zone}`}
+                  className={`site-zone-tab${zone === siteZoneTab ? ' active' : ''}`}
+                  onClick={() => { setSiteZoneTab(zone); setTogglePage(0); }}
+                >
+                  <span className="site-zone-badge">{zone}</span>
+                  <span className="site-zone-copy">
+                    <strong>{t(`${zone}구역`)}</strong>
+                    <small>
+                      {!zoneSites.length
+                        ? t('운영 준비 중')
+                        : t(destinationIntent === 'recall' ? `텐트 ${count}곳` : `빈 자리 ${count}곳`)}
+                    </small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="site-board-head">
+            <h1>
+              {t(`${siteZoneTab}구역에서 ${destinationIntent === 'recall'
+                ? '로봇을 부를 사이트를 골라주세요'
+                : '짐을 받을 사이트를 골라주세요'}`)}
+            </h1>
+            <div className="site-board-legend" aria-hidden="true">
+              {destinationIntent === 'recall' ? (
+                <><span><i className="legend-tent" />{t('텐트 있음')}</span><span><i className="legend-free" />{t('비어 있음')}</span></>
+              ) : (
+                <><span><i className="legend-free" />{t('비어 있음')}</span><span><i className="legend-busy" />{t('사용 중')}</span></>
+              )}
+            </div>
+          </div>
+
+          <div className="toggle-grid">
+            {zonePageSites.map(site => {
+                const occupied = occupiedSites.includes(site);
+                const planned = isPlannedSite(site);
+                const status = planned
+                  ? t('준비 중')
+                  : states[site]
+                  ? t('ON · 진행 중')
+                  : selectedSite === site
+                    ? t('선택됨')
+                    : occupied
+                      ? t(destinationIntent === 'recall' ? '텐트 있음' : '사용 중')
+                      : t('비어 있음');
+                return (
+                  <button
+                    key={site}
+                    data-ui={`operator-site-${site}`}
+                    className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${missionSelectionLocked && !states[site] ? 'locked' : ''} ${destinationIntent === 'delivery' && occupied ? 'occupied' : ''} ${destinationIntent === 'recall' && occupied ? 'tent' : ''} ${planned ? 'planned' : ''}`}
+                    onClick={() => handleToggle(site)}
+                    disabled={
+                      planned
+                      || missionSelectionLocked
+                      || (
+                        destinationIntent === 'delivery'
+                        && occupied
+                      )
+                    }
+                  >
+                    <span className="site-label">{site}</span>
+                    <span className="site-status">{status}</span>
+                  </button>
+                );
+              })}
+          </div>
+
+          {/* A zone with more than 16 sites pages within that zone (4 × 4 per page). */}
+          {zonePageCount > 1 && (
+            <div className="site-board-pager">
+              <button
+                className="page-arrow left"
+                aria-label={t('이전 쪽')}
+                onClick={() => setTogglePage(p => Math.max(0, p - 1))}
+                disabled={togglePage === 0}
+              >
+                ◀
+              </button>
+              <div className="page-dots">
+                {Array.from({ length: zonePageCount }).map((_, i) => (
+                  <span key={i} data-ui={`operator-site-page-${i}`} className={`page-dot ${togglePage === i ? 'active' : ''}`} onClick={() => setTogglePage(i)} />
+                ))}
+              </div>
+              <span className="site-board-page-label">
+                {zonePageSites[0]}~{zonePageSites[zonePageSites.length - 1]} · {togglePage + 1}/{zonePageCount}{lang === 'en' ? '' : '쪽'}
+              </span>
+              <button
+                className="page-arrow right"
+                aria-label={t('다음 쪽')}
+                onClick={() => setTogglePage(p => Math.min(zonePageCount - 1, p + 1))}
+                disabled={togglePage === zonePageCount - 1}
+              >
+                ▶
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
@@ -3473,33 +3545,75 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
       {/* 운행 중에도 현재 미션을 중단하지 않고 누적 운행 기록을 조회한다. */}
       {serviceEvidenceModal}
 
-      {/* ── 출발 최종 확인 팝업 ── */}
+      {/* ── HJ_261118 - 도착 화면 (기존 출발 최종 확인 팝업을 전체 화면으로 대체) ── */}
           {showArrivalComplete && arrivedSite && robotOwnsReturn
-            && !recallTurnaroundInProgress && (
-        <div className="arrival-complete-overlay">
-          <div className="arrival-complete-box">
-            <p className="arrival-complete-msg">
-              {recallArrivalPresentation ? (
-                <>{recallFinalReturnReady ? '짐 싣기를 모두 마친 후,' : '짐 정리를 마친 후,'}<br /><strong>[{recallCompletionLabel(arrivedSite, recallFinalReturnReady)}]</strong> 버튼을 눌러주세요</>
-              ) : (
-                <>배송 물품을 모두 내린 후,<br /><strong>[도착 완료 · 복귀]</strong> 버튼을 눌러주세요</>
-              )}
-            </p>
-            <p className="arrival-complete-sub">
-              {recallArrivalPresentation
-                ? recallReturnInstructions(arrivedSite, recallFinalReturnReady)
-                : '버튼을 누르면 로봇이 대기·충전 장소로 복귀합니다.'}
-            </p>
-            {recallFinalReturnReady && batteryReturnState.urgent && <p role="alert" className="arrival-complete-sub">배터리가 25% 미만이어도 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.</p>}
-            <button className="arrival-complete-btn" data-ui="operator-arrival-return-confirm"
-              onClick={handleArrivalComplete} disabled={returnRequestPending}>
-              {returnRequestPending ? '완료 요청 중…' : recallArrivalPresentation
-                ? recallCompletionLabel(arrivedSite, recallFinalReturnReady)
-                : '도착 완료 · 복귀'}
-            </button>
+            && !recallTurnaroundInProgress && (() => {
+        const copy = arrivalScreenCopy(arrivedSite, recallArrivalPresentation, recallFinalReturnReady);
+        return (
+          <div className="arrival-screen waiting-theme-forest" data-ui="operator-arrival-screen">
+            {renderForestHeader()}
+            <section className="arrival-trip">
+              <span className="arrival-face" aria-hidden="true">
+                <svg viewBox="0 0 20 12"><path d="M2 10 Q10 0 18 10" /></svg>
+                <svg viewBox="0 0 20 12"><path d="M2 10 Q10 0 18 10" /></svg>
+              </span>
+              <div className="arrival-trip-copy">
+                <h1>{t(copy.title)}</h1>
+                <p>{t(copy.subtitle)}</p>
+              </div>
+              <span className="arrival-status"><i />{t('도착 · 정차 중')}</span>
+            </section>
+            {recallFinalReturnReady && batteryReturnState.urgent && (
+              <p role="alert" className="arrival-alert">{t('배터리가 25% 미만이어도 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.')}</p>
+            )}
+            <section className="arrival-steps">
+              {copy.steps.map(([kind, title, detail], index) => (
+                <div className="arrival-step" key={kind}>
+                  <span className="arrival-step-num">{index + 1}</span>
+                  <div className="arrival-step-art"><ArrivalArt kind={kind} /></div>
+                  <strong>{t(title)}</strong>
+                  <small>{t(detail)}</small>
+                </div>
+              ))}
+            </section>
+            <section className="arrival-end">
+              <div className="arrival-end-copy">
+                <strong>{t(copy.question)}</strong>
+                <small>{t(copy.hint)}</small>
+              </div>
+              <button type="button" className="arrival-end-btn" data-ui="operator-arrival-finish"
+                onClick={requestArrivalComplete} disabled={returnRequestPending}>
+                {t(returnRequestPending ? '완료 요청 중…' : copy.action)}
+              </button>
+            </section>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* HJ_261118 - 도착 후 출발 전 한 번 더 확인 (도착 화면·왼쪽 복귀 버튼 공통) */}
+      {arrivalConfirmOpen && arrivedSite && robotOwnsReturn && !recallTurnaroundInProgress && (() => {
+        const copy = arrivalScreenCopy(arrivedSite, recallArrivalPresentation, recallFinalReturnReady);
+        return (
+          <div className="move-confirm-overlay arrival-confirm-overlay" onClick={() => setArrivalConfirmOpen(false)}>
+            <div className="move-confirm-box" role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                {t(copy.confirmTitle)}<br />
+                <span className="arrival-confirm-body">{t(copy.confirmBody)}</span>
+              </p>
+              <div className="move-confirm-btns">
+                <button className="move-confirm-no" data-ui="operator-arrival-return-cancel"
+                  onClick={() => setArrivalConfirmOpen(false)}>
+                  {t('취소')}
+                </button>
+                <button className="move-confirm-yes" data-ui="operator-arrival-return-confirm"
+                  onClick={confirmArrivalComplete} disabled={returnRequestPending}>
+                  {t(copy.action)}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showMoveConfirm && (
         <div className="move-confirm-overlay" onClick={() => setShowMoveConfirm(false)}>
@@ -3507,14 +3621,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             <p className="move-confirm-msg">
               {destinationIntent === 'recall' ? (
                 <>
-                  {selectedSite} 앞 도로로 부를까요?<br />
-                  사이트 안으로는 들어가지 않아요.
+                  {t(`${selectedSite} 앞 도로로 부를까요?`)}<br />
+                  {t('사이트 안으로는 들어가지 않아요.')}
                 </>
               ) : (
                 <>
                   {/* HH_261102 - Never claim stopping is impossible when the existing Stop control remains available. */}
-                  {selectedSite}로 배달할까요?<br />
-                  로봇 주변을 비워 주세요.
+                  {t(`${selectedSite}로 배달할까요?`)}<br />
+                  {t('로봇 주변을 비워 주세요.')}
                 </>
               )}
             </p>
@@ -3530,13 +3644,13 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                   setShowMoveVerify(true);
                 }}
               >
-                다음
+                {t('다음')}
               </button>
               <button
                 className="move-confirm-no"
                 onClick={() => setShowMoveConfirm(false)}
               >
-                취소
+                {t('취소')}
               </button>
             </div>
           </div>
@@ -3548,12 +3662,12 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           onClick={() => setStopConfirmation(null)}>
           <div className="move-confirm-box operator-stop-confirm-box" role="alertdialog" aria-modal="true"
             aria-labelledby="operator-stop-confirm-title" onClick={e => e.stopPropagation()}>
-            <p id="operator-stop-confirm-title" className="move-confirm-msg">운행을 정지하시겠습니까?</p>
+            <p id="operator-stop-confirm-title" className="move-confirm-msg">{t('운행을 정지하시겠습니까?')}</p>
             <div className="move-confirm-btns">
               <button type="button" className="move-confirm-yes" data-ui="operator-stop-confirm-yes"
-                onClick={confirmOperatorStop}>예</button>
+                onClick={confirmOperatorStop}>{t('예')}</button>
               <button type="button" className="move-confirm-no" data-ui="operator-stop-confirm-no"
-                onClick={() => setStopConfirmation(null)}>아니요</button>
+                onClick={() => setStopConfirmation(null)}>{t('아니요')}</button>
             </div>
           </div>
         </div>
@@ -3565,14 +3679,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           <div className="move-verify-box" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
               {destinationIntent === 'recall'
-                ? '호출할 사이트'
-                : '배달할 사이트'}<br />
+                ? t('호출할 사이트')
+                : t('배달할 사이트')}<br />
               <span className="move-verify-site">{selectedSite}</span>
             </p>
-            <p className="move-verify-sub">아래에 사이트명을 입력해주세요</p>
+            <p className="move-verify-sub">{t('아래에 사이트명을 입력해주세요')}</p>
             {moveVerifyError && (
               <div className="move-verify-error-box">
-                <p className="move-verify-retry">사이트명이 맞지 않아요. 다시 입력해 주세요.</p>
+                <p className="move-verify-retry">{t('사이트명이 맞지 않아요. 다시 입력해 주세요.')}</p>
               </div>
             )}
             <input
@@ -3581,7 +3695,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               value={moveVerifyInput}
               onChange={e => { setMoveVerifyInput(e.target.value.toUpperCase()); setMoveVerifyError(false); }}
               onFocus={() => setActiveField('moveVerify')}
-              placeholder={`예: ${selectedSite}`}
+              placeholder={t(`예: ${selectedSite}`)}
               autoFocus
             />
 
@@ -3610,7 +3724,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 className="move-confirm-no"
                 onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}
               >
-                취소
+                {t('취소')}
               </button>
               <button
                 className="move-confirm-yes"
@@ -3624,7 +3738,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                   }
                 }}
               >
-                확인
+                {t('확인')}
               </button>
             </div>
           </div>
@@ -3634,13 +3748,13 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
       {missionBlockMessage && (
         <div className="move-confirm-overlay mission-block-overlay" onClick={() => setMissionBlockMessage('')}>
           <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
-            <p className="move-confirm-msg mission-block-msg">{missionBlockMessage}</p>
+            <p className="move-confirm-msg mission-block-msg">{t(missionBlockMessage)}</p>
             <div className="move-confirm-btns">
               <button
                 className="move-confirm-no mission-block-close"
                 onClick={() => setMissionBlockMessage('')}
               >
-                확인
+                {t('확인')}
               </button>
             </div>
           </div>
@@ -3650,13 +3764,13 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
       {batteryReturnMessage && (
         <div className="move-confirm-overlay mission-block-overlay" onClick={() => setBatteryReturnMessage('')}>
           <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
-            <p className="move-confirm-msg mission-block-msg">{batteryReturnMessage}</p>
+            <p className="move-confirm-msg mission-block-msg">{t(batteryReturnMessage)}</p>
             <div className="move-confirm-btns">
               <button
                 className="move-confirm-no mission-block-close"
                 onClick={() => setBatteryReturnMessage('')}
               >
-                확인
+                {t('확인')}
               </button>
             </div>
           </div>

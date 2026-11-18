@@ -291,7 +291,9 @@ describe('display interactions', () => {
     expect(display.getAttribute('role')).toBe('region');
     expect(display.hasAttribute('aria-modal')).toBe(false);
     expect(host.querySelector('.dd-header')).not.toBeNull();
-    expect(host.querySelector('.dd-header').textContent).toContain('CAMROD');
+    // HJ_261118 - The trip bar replaces the CAMROD brand bar (the App banner carries the brand).
+    expect(host.querySelector('.dd-trip').textContent).toContain('사이트로 이동하고 있어요');
+    expect(host.querySelector('.dd-pace')).not.toBeNull();
     expect(host.textContent).not.toContain('DRIVING VIEW');
     expect(host.querySelector('[data-testid="driving-ranger-schematic"]')).toBeNull();
     expect(host.querySelector('[data-testid="ranger-navigation-scene"]').getAttribute('data-model-url'))
@@ -392,11 +394,10 @@ describe('display interactions', () => {
     const onDismiss = jest.fn(), onSafetyStop = jest.fn(), onToggleTheme = jest.fn();
     act(() => root.render(<DrivingDisplay snapshot={fixture()} onDismiss={onDismiss}
       onSafetyStop={onSafetyStop} onToggleTheme={onToggleTheme} />));
-    act(() => host.querySelector('.dd-theme-action').click());
-    expect(onToggleTheme).toHaveBeenCalledTimes(1);
-    expect(onDismiss).not.toHaveBeenCalled();
-    expect(host.querySelector('.dd-sensors').open).toBe(true);
-    act(() => host.querySelector('.dd-sensors summary').click());
+    // HJ_261118 - The passenger layout has no theme toggle or sensor panel.
+    expect(host.querySelector('.dd-theme-action')).toBeNull();
+    expect(host.querySelector('.dd-sensors')).toBeNull();
+    expect(onToggleTheme).not.toHaveBeenCalled();
     expect(onDismiss).not.toHaveBeenCalled();
     expect(host.querySelector('.dd-map-group')).not.toBeNull();
     expect(host.querySelector('.dd-progress-group')).not.toBeNull();

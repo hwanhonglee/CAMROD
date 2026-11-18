@@ -91,11 +91,10 @@ test('short service prompts retain every existing confirmation before sending a 
       mission_dispatch_site: '', service_state: 0, service_state_name: 'DROP_ZONE_WAIT', mission_phase: 'READY' }));
   });
   await tap(host.querySelector('[data-ui="operator-open-destination"]'));
-  await tap(host.querySelector('[data-ui="usage-safety-confirm"]'));
   expect(host.textContent).toContain('어떤 서비스를 이용하시겠어요?');
+  // HJ_261118 - Delivery opens site selection directly (no confirm dialog).
   await tap(host.querySelector('[data-ui="operator-intent-delivery"]'));
-  expect(host.textContent).toContain('텐트와 장비가 이동을 막지 않는지 확인해 주세요.');
-  await tap(host.querySelector('[data-ui="operator-service-delivery-confirm"]'));
+  expect(host.textContent).not.toContain('텐트와 장비가 이동을 막지 않는지 확인해 주세요.');
   await tap(host.querySelector('[data-ui="operator-site-B2"]'));
   await tap(host.querySelector('[data-ui="operator-site-preview-confirm"]'));
   expect(host.textContent).toContain('B2로 배달할까요?');
@@ -135,7 +134,7 @@ test('actual App driving overlay dismisses onto the same existing header and sit
   await startMission();
   const display = host.querySelector('[data-testid="driving-display"]');
   const controlScreen = host.querySelector('[data-ui="operator-control-screen"]');
-  const originalLogo = host.querySelector('.control-header .ch-logo img');
+  const originalLogo = host.querySelector('.waiting-header .wh-logo img');
   const originalSiteButton = host.querySelector('[data-ui="operator-site-B2"]');
   const originalSiteGrid = host.querySelector('.toggle-grid');
   expect(display).not.toBeNull();
@@ -144,16 +143,16 @@ test('actual App driving overlay dismisses onto the same existing header and sit
   expect(originalSiteButton.textContent).toContain('B2');
   expect(originalSiteButton.textContent).toContain('ON');
   expect(originalSiteButton.disabled).toBe(true);
-  expect(originalSiteGrid.querySelectorAll('.toggle-card')).toHaveLength(6);
+  expect(originalSiteGrid.querySelectorAll('.toggle-card')).toHaveLength(13);
   expectNoCommands();
 
   await tap(display);
   expect(host.querySelector('[data-testid="driving-display"]')).toBeNull();
   expect(host.querySelector('[data-ui="operator-control-screen"]')).toBe(controlScreen);
-  expect(host.querySelector('.control-header .ch-logo img')).toBe(originalLogo);
+  expect(host.querySelector('.waiting-header .wh-logo img')).toBe(originalLogo);
   expect(host.querySelector('[data-ui="operator-site-B2"]')).toBe(originalSiteButton);
   expect(host.querySelector('.toggle-grid')).toBe(originalSiteGrid);
-  expect(host.textContent).toContain('배송 목적지 선택');
+  expect(host.textContent).toContain('짐을 받을 사이트를 골라주세요');
   expect(originalSiteButton.disabled).toBe(true);
   expect(host.querySelector('[data-ui="open-driving-display"]')).not.toBeNull();
   expectNoCommands();
@@ -164,8 +163,8 @@ test('actual App driving overlay dismisses onto the same existing header and sit
   expectNoCommands();
 });
 
-test('idle home opens the real map only by its button and returns home without a command', async () => {
-  // HH_261002 - Map inspection does not create a delivery, recall, or manual drive.
+test('idle home and service menu offer no map entry and send no command', async () => {
+  // HJ_261118 - The idle "주행 지도 보기" entry was removed from both public headers.
   const idle = { active: false, generation: 0, site: '', intent: '', owner: '' };
   global.fetch = jest.fn(async url => ({ ok: true, status: 200, json: async () =>
     url === '/api/driving' ? { ...snapshot(), mission: idle, route: { valid: false,
@@ -181,17 +180,11 @@ test('idle home opens the real map only by its button and returns home without a
       service_state: 0, service_state_name: 'DROP_ZONE_WAIT', mission_phase: 'READY' }));
   });
   expect(host.querySelector('[data-ui="operator-waiting-screen"]')).not.toBeNull();
+  expect(host.querySelector('[data-ui="open-idle-navigation-map"]')).toBeNull();
+  await tap(host.querySelector('[data-ui="operator-open-destination"]'));
+  expect(host.textContent).toContain('어떤 서비스를 이용하시겠어요?');
+  expect(host.querySelector('[data-ui="open-idle-navigation-map"]')).toBeNull();
   expect(host.querySelector('[data-ui="idle-navigation-map"]')).toBeNull();
-  await tap(host.querySelector('[data-ui="open-idle-navigation-map"]'));
-  const map = host.querySelector('[data-ui="idle-navigation-map"]');
-  expect(map).not.toBeNull();
-  expect(map.querySelector('[data-map-source="/map/markers"]')).not.toBeNull();
-  expect(map.querySelector('.dd-path-core')).toBeNull();
-  expect(map.querySelector('.dd-back-action').textContent).toBe('홈으로');
-  expectNoCommands();
-  await tap(map.querySelector('.dd-back-action'));
-  expect(host.querySelector('[data-ui="idle-navigation-map"]')).toBeNull();
-  expect(host.querySelector('[data-ui="operator-waiting-screen"]')).not.toBeNull();
   expectNoCommands();
 });
 
@@ -211,7 +204,6 @@ test('public service chooser does not return home after twenty minutes without i
   // this screen must not dispatch Return, Stop, reset, or any motion command.
   await renderApp();
   await tap(host.querySelector('[data-ui="operator-open-destination"]'));
-  await tap(host.querySelector('[data-ui="usage-safety-confirm"]'));
   expect(host.querySelector('[data-ui="operator-service-selection-screen"]')).not.toBeNull();
   await act(async () => { jest.advanceTimersByTime(20 * 60 * 1000 + 1); });
   expect(host.querySelector('[data-ui="operator-service-selection-screen"]')).not.toBeNull();
@@ -257,8 +249,8 @@ test('safety reset is wired only to the authenticated administrator safety tab',
 
 test('driving controls stay in view and confirmed stop uses the existing stop endpoint', async () => {
   await startMission();
-  await tap(host.querySelector('.dd-theme-action'));
-  expect(host.querySelector('[data-testid="driving-display"]').classList.contains('dd-theme-dark')).toBe(true);
+  // HJ_261118 - No theme toggle in the passenger driving layout.
+  expect(host.querySelector('.dd-theme-action')).toBeNull();
   expect(host.querySelector('[data-testid="driving-display"]')).not.toBeNull();
   await tap(host.querySelector('.dd-stop-action'));
   expect(host.querySelector('.dd-stop-dialog')).not.toBeNull();
@@ -352,17 +344,45 @@ test('stale stop confirmation cannot stop a newly admitted mission', async () =>
   expect(fetch.mock.calls.some(([url, options]) => url === '/ui/stop' && options?.method === 'POST')).toBe(false);
 });
 
-test('paging the existing destination controls survives reopen and touch return', async () => {
+test('temporary A/C zones are display-only and B stays the default zone', async () => {
+  // HJ_261118 - Planned sites appear on the board but can never be selected or sent.
+  await renderApp();
+  await act(async () => {
+    sockets[0].onopen();
+    emit(missionFrame({ states: {}, mission_dispatch_active: false, mission_dispatch_generation: 0,
+      mission_dispatch_site: '', service_state: 0, service_state_name: 'DROP_ZONE_WAIT', mission_phase: 'READY' }));
+  });
+  await tap(host.querySelector('[data-ui="operator-open-destination"]'));
+  await tap(host.querySelector('[data-ui="operator-intent-delivery"]'));
+  expect(host.querySelector('[data-ui="operator-site-zone-B"]').getAttribute('aria-selected')).toBe('true');
+  expect(host.querySelector('[data-ui="operator-site-B1"]')).not.toBeNull();
+  await tap(host.querySelector('[data-ui="operator-site-zone-A"]'));
+  const planned = host.querySelector('[data-ui="operator-site-A1"]');
+  expect(planned.disabled).toBe(true);
+  expect(planned.textContent).toContain('준비 중');
+  expect(host.querySelector('[data-ui="operator-site-zone-A"]').textContent).toContain('운영 준비 중');
+  expect(host.querySelector('.page-arrow.right')).not.toBeNull();
+  await tap(planned);
+  expect(host.querySelector('.site-pick')).toBeNull();
+  await tap(host.querySelector('[data-ui="operator-site-zone-C"]'));
+  expect(host.querySelector('[data-ui="operator-site-C8"]').disabled).toBe(true);
+  expectNoCommands();
+});
+
+test('the zone site board survives reopen and touch return', async () => {
+  // HJ_261118 - All 13 B-zone sites share one board page (up to 16 per zone page).
   await startMission();
   await tap(host.querySelector('[data-testid="driving-display"]'));
-  await tap(host.querySelector('.page-arrow.right'));
-  const pageTwoSite = host.querySelector('[data-ui="operator-site-B7"]');
-  expect(pageTwoSite).not.toBeNull();
-  expect(host.querySelector('[data-ui="operator-site-B2"]')).toBeNull();
+  expect(host.querySelector('.page-arrow.right')).toBeNull();
+  expect(host.querySelector('[data-ui="operator-site-zone-B"]').getAttribute('aria-selected')).toBe('true');
+  const laterSite = host.querySelector('[data-ui="operator-site-B7"]');
+  const earlierSite = host.querySelector('[data-ui="operator-site-B2"]');
+  expect(laterSite).not.toBeNull();
+  expect(earlierSite).not.toBeNull();
   await tap(host.querySelector('[data-ui="open-driving-display"]'));
   await tap(host.querySelector('[data-testid="driving-display"]'));
-  expect(host.querySelector('[data-ui="operator-site-B7"]')).toBe(pageTwoSite);
-  expect(host.querySelector('[data-ui="operator-site-B2"]')).toBeNull();
+  expect(host.querySelector('[data-ui="operator-site-B7"]')).toBe(laterSite);
+  expect(host.querySelector('[data-ui="operator-site-B2"]')).toBe(earlierSite);
   expectNoCommands();
 });
 
@@ -372,7 +392,14 @@ test('real App exposes unloading confirmation instead of covering it with drivin
     service_state: 6, service_state_name: 'UNLOAD_WAIT', mission_phase: 'ARRIVED', site: 'B2',
   })));
   expect(host.querySelector('[data-testid="driving-display"]')).toBeNull();
+  // HJ_261118 - Arrival is a full screen; its button only opens a second confirmation.
+  expect(host.querySelector('[data-ui="operator-arrival-screen"]')).not.toBeNull();
+  expect(host.querySelector('[data-ui="operator-arrival-finish"]').textContent).toContain('사용 종료');
+  expect(host.querySelector('[data-ui="operator-arrival-return-confirm"]')).toBeNull();
+  await tap(host.querySelector('[data-ui="operator-arrival-finish"]'));
   expect(host.querySelector('[data-ui="operator-arrival-return-confirm"]')).not.toBeNull();
+  await tap(host.querySelector('[data-ui="operator-arrival-return-cancel"]'));
+  expect(host.querySelector('[data-ui="operator-arrival-return-confirm"]')).toBeNull();
   expectNoCommands();
 });
 
@@ -385,6 +412,10 @@ test('Recall first completion reveals moving navigation, then final loading conf
     recall_final_return_ready: false,
   });
   await act(async () => emit(recallWait));
+  // HJ_261118 - The arrival-screen button opens a confirmation; only that sends.
+  expect(host.querySelector('[data-ui="operator-arrival-finish"]').textContent).toContain('정리 완료 · 회전 시작');
+  await tap(host.querySelector('[data-ui="operator-arrival-finish"]'));
+  expect(sockets[0].send).not.toHaveBeenCalled();
   const firstConfirmation = host.querySelector('[data-ui="operator-arrival-return-confirm"]');
   expect(firstConfirmation).not.toBeNull();
   // HH_261102 - The shorter action label still owns the same first-stage turnaround command.
@@ -419,6 +450,8 @@ test('Recall first completion reveals moving navigation, then final loading conf
     mission_phase: 'ARRIVED', recall_final_return_ready: true,
     returning: true,
   })));
+  expect(host.querySelector('[data-ui="operator-arrival-return-confirm"]')).toBeNull();
+  await tap(host.querySelector('[data-ui="operator-arrival-finish"]'));
   const finalConfirmation = host.querySelector('[data-ui="operator-arrival-return-confirm"]');
   expect(host.querySelector('[data-testid="driving-display"]')).toBeNull();
   expect(finalConfirmation).not.toBeNull();
@@ -431,7 +464,7 @@ test('injected local preview renders the original App and dismisses without any 
   await renderApp({ drivingPreviewSnapshot: snapshot() });
   expect(sockets).toHaveLength(0);
   expect(fetch).not.toHaveBeenCalled();
-  const originalLogo = host.querySelector('.control-header .ch-logo img');
+  const originalLogo = host.querySelector('.waiting-header .wh-logo img');
   const originalGrid = host.querySelector('.toggle-grid');
   const originalSite = host.querySelector('[data-ui="operator-site-B2"]');
   expect(originalLogo).not.toBeNull();
@@ -439,12 +472,12 @@ test('injected local preview renders the original App and dismisses without any 
   expect(originalSite.textContent).toContain('ON');
   await tap(host.querySelector('[data-testid="driving-display"]'));
   expect(host.querySelector('[data-testid="driving-display"]')).toBeNull();
-  expect(host.querySelector('.control-header .ch-logo img')).toBe(originalLogo);
+  expect(host.querySelector('.waiting-header .wh-logo img')).toBe(originalLogo);
   expect(host.querySelector('.toggle-grid')).toBe(originalGrid);
   expect(host.querySelector('[data-ui="operator-site-B2"]')).toBe(originalSite);
   expect(host.querySelector('.driving-preview-returned')).toBeNull();
   expect(host.querySelector('[data-preview="returned"] .toggle-grid')).toBe(originalGrid);
-  expect(host.textContent).toContain('배송 목적지 선택');
+  expect(host.textContent).toContain('짐을 받을 사이트를 골라주세요');
   expect(sockets).toHaveLength(0);
   expect(fetch).not.toHaveBeenCalled();
 });
@@ -453,13 +486,11 @@ test('preview controls are inert and fixture pulses preserve dismissal and selec
   await renderApp({ drivingPreviewSnapshot: snapshot() });
   await tap(host.querySelector('[data-testid="driving-display"]'));
   await tap(host.querySelector('.preview-stop-btn'));
-  await tap(host.querySelector('.page-arrow.right'));
-  const originalPageTwo = host.querySelector('[data-ui="operator-site-B7"]');
-  expect(originalPageTwo).not.toBeNull();
+  const originalSite = host.querySelector('[data-ui="operator-site-B7"]');
+  expect(originalSite).not.toBeNull();
   await renderApp({ drivingPreviewSnapshot: { ...snapshot(), preview_sequence: 2 } });
   expect(host.querySelector('[data-testid="driving-display"]')).toBeNull();
-  expect(host.querySelector('[data-ui="operator-site-B7"]')).toBe(originalPageTwo);
-  expect(host.querySelector('[data-ui="operator-site-B2"]')).toBeNull();
+  expect(host.querySelector('[data-ui="operator-site-B7"]')).toBe(originalSite);
   expect(sockets).toHaveLength(0);
   expect(fetch).not.toHaveBeenCalled();
 });

@@ -40,3 +40,39 @@
 .charging-confirm-box > p { line-height: 1.6; font-size: 1.25rem; }
 .charging-access-screen button:focus-visible { outline: 3px solid #c88621; outline-offset: 4px; }
 @media (max-width: 720px) { .charging-header { padding: 1rem; } .charging-content { width: 94%; } .charging-status { gap: 1.2rem; padding: 1.2rem; } .charging-soc { min-width: 8rem; padding-right: 1.2rem; } .charging-task { padding: 1.2rem; } }
+
+/* ── HJ_261118 - 충전 화면도 대기 화면과 같은 숲·나무 테마(크림 배경, 숲색 배너, 종이색 카드) ── */
+.charging-access-screen.charging-theme-forest { background: var(--wf-cream); color: var(--wf-ink); }
+.charging-theme-forest .charging-header {
+  background: var(--wf-forest);
+  border-bottom: 8px solid var(--wf-bark);
+  color: #fff;
+}
+.charging-theme-forest .charging-brand img { padding: .25rem; border-radius: .75rem; background: #fff; }
+.charging-theme-forest .charging-brand span { color: #c9d6c4; }
+.charging-theme-forest .charging-brand strong { color: #fff; }
+.charging-theme-forest .charging-connection { background: var(--wf-forest-2); color: #fff; }
+.charging-theme-forest .charging-connection::before {
+  content: ''; display: inline-block; width: .55rem; height: .55rem; margin-right: .45rem;
+  border-radius: 50%; background: #7fd08f; vertical-align: middle;
+}
+.charging-theme-forest .charging-connection.unavailable { background: #fff1d7; color: #72551d; }
+.charging-theme-forest .charging-connection.unavailable::before { background: #d4a030; }
+.charging-theme-forest .charging-stop { background: #fff; color: #a4362d; border-color: #fff; }
+.charging-theme-forest .charging-status,
+.charging-theme-forest .charging-task {
+  background: var(--wf-paper);
+  border: 1.5px solid var(--wf-line);
+}
+.charging-theme-forest .charging-soc { border-right-color: var(--wf-line); }
+.charging-theme-forest .charging-soc > span,
+.charging-theme-forest .charging-details { color: var(--wf-muted); }
+.charging-theme-forest .charging-soc strong { color: var(--wf-forest); }
+.charging-theme-forest .charging-eligible { color: var(--wf-forest); }
+.charging-theme-forest .charging-task h1 { color: var(--wf-ink); }
+.charging-theme-forest .charging-task-ready { border-color: var(--wf-forest); }
+.charging-theme-forest .charging-actions button { border-color: var(--wf-forest); }
+.charging-theme-forest .charging-primary { background: var(--wf-forest); color: #fff; }
+.charging-theme-forest .charging-secondary { background: #fff; color: var(--wf-forest); }
+.charging-theme-forest .charging-actions button:disabled { color: #a39a90; background: #efe9de; border-color: var(--wf-line); }
+.charging-theme-forest button:focus-visible { outline-color: var(--wf-bark); }

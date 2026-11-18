@@ -128,7 +128,9 @@ console.log(JSON.stringify({admitted,driving,firstWait,turnaround,finalWait,safe
 
 
 def test_both_screen_headers_use_normal_flow_status_and_have_no_guest_modal():
-    assert SOURCE.count('{guestAdmissionStatus}') == 2
+    # HJ_261118 - Both headers come from the shared forest header helper.
+    assert SOURCE.count('renderForestHeader({ admissionStatus: guestAdmissionStatus })') == 2
+    assert SOURCE.count('{admissionStatus}') == 1
     assert 'className="guest-recall-overlay"' not in SOURCE
     assert 'className="guest-recall-box"' not in SOURCE
     status = SOURCE.split('const guestAdmissionStatus =', 1)[1].split(') : null;', 1)[0]
@@ -139,4 +141,6 @@ def test_both_screen_headers_use_normal_flow_status_and_have_no_guest_modal():
     # HH_261001 - Stop now requires a second, mission-revision-checked tap.
     assert "onClick={() => requestStopConfirmation('service')}" in SOURCE
     assert 'onClick={confirmOperatorStop}' in SOURCE
-    assert 'onClick={handleArrivalComplete}' in SOURCE
+    # HJ_261118 - Arrival completion also requires a second confirmation tap.
+    assert 'onClick={requestArrivalComplete}' in SOURCE
+    assert 'onClick={confirmArrivalComplete}' in SOURCE

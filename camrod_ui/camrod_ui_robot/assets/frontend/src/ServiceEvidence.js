@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import MissionRecords from './MissionRecords';
 import './ServiceEvidence.css';
+import { localeOf, translate, useLang } from './i18n';
 
 const SUMMARY_ENDPOINT = '/api/service-metrics/summary';
 const HISTORY_ENDPOINT = '/api/service-metrics?days=30';
@@ -255,11 +256,11 @@ const formatDate = value => {
   }).format(parsed);
 };
 
-const formatDateTime = value => {
+const formatDateTime = (value, locale = 'ko-KR') => {
   if (!value) return '-';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
-  return new Intl.DateTimeFormat('ko-KR', {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: SEOUL_TIME_ZONE,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
@@ -372,6 +373,9 @@ function EvidenceKpi({ label, value, tone = '' }) {
 }
 
 export function ServiceEvidenceSummary({ data, loading, error, onOpen }) {
+  // HJ_261118 - 대기 화면의 요약 띠는 손님 화면이라 한·영 전환을 따른다(상세 모달은 그대로).
+  const lang = useLang();
+  const t = text => translate(lang, text);
   const current = isRecord(data?.current_service) ? data.current_service : null;
   const recent = current || (isRecord(data?.last_completed_service)
     ? data.last_completed_service : null);
@@ -387,25 +391,25 @@ export function ServiceEvidenceSummary({ data, loading, error, onOpen }) {
       type="button"
       className={`evidence-summary-strip ${stale ? 'evidence-summary-stale' : ''}`}
       onClick={onOpen}
-      aria-label="실증 운행 현황 상세 보기"
+      aria-label={t('실증 운행 현황 상세 보기')}
     >
       <span className="evidence-summary-heading">
-        <strong>실증 운행 현황</strong>
+        <strong>{t('실증 운행 현황')}</strong>
         <small>
           {stale
-            ? '최근 집계 표시 중 · 갱신 지연'
-            : (data?.generated_at ? `${formatDateTime(data.generated_at)} 기준` : fallback)}
+            ? t('최근 집계 표시 중 · 갱신 지연')
+            : (data?.generated_at ? t(`${formatDateTime(data.generated_at, localeOf(lang))} 기준`) : t(fallback))}
         </small>
-        <span className="evidence-summary-more">상세 보기 ›</span>
+        <span className="evidence-summary-more">{t('상세 보기 ›')}</span>
       </span>
       <EvidenceKpi
-        label={current ? '이번 서비스' : '최근 서비스'}
-        value={tripDistance || fallback}
+        label={t(current ? '이번 서비스' : '최근 서비스')}
+        value={t(tripDistance || fallback)}
         tone={current ? 'live' : ''}
       />
-      <EvidenceKpi label="오늘 누적" value={todayDistance || fallback} />
-      <EvidenceKpi label="오늘 완료" value={todayCount || fallback} />
-      <EvidenceKpi label="전체 누적" value={lifetime || fallback} />
+      <EvidenceKpi label={t('오늘 누적')} value={t(todayDistance || fallback)} />
+      <EvidenceKpi label={t('오늘 완료')} value={t(todayCount || fallback)} />
+      <EvidenceKpi label={t('전체 누적')} value={t(lifetime || fallback)} />
     </button>
   );
 }

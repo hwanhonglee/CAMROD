@@ -1,0 +1,201 @@
+/* HJ_261118 - 관리자 진단(로그인·진단 워크스페이스)을 대기 화면의 숲·나무 테마로 맞춘다.
+   .admin-theme-forest 는 .waiting-theme-forest 와 함께 붙어 --wf-* 변수를 그대로 쓴다.
+   상태 색(정상 초록·경고 노랑·오류 빨강)은 의미가 있으므로 바꾸지 않는다. */
+
+/* ── 로그인 ─────────────────────────────────────────────── */
+.admin-theme-forest .login-field label { color: var(--wf-ink); }
+.admin-theme-forest .login-field input {
+  border-color: var(--wf-line);
+  background: var(--wf-paper);
+  color: var(--wf-ink);
+}
+.admin-theme-forest .login-field input:focus {
+  border-color: var(--wf-forest);
+  box-shadow: 0 0 0 3px rgba(31, 58, 46, 0.14);
+}
+.admin-theme-forest .login-submit-btn { background: var(--wf-forest); }
+.admin-theme-forest .login-submit-btn:hover { background: var(--wf-forest-2); }
+.admin-theme-forest .vkb-tab {
+  border-color: var(--wf-line);
+  background: var(--wf-cream);
+  color: var(--wf-muted);
+}
+.admin-theme-forest .vkb-tab.active {
+  border-color: var(--wf-forest);
+  background: var(--wf-forest);
+  color: #fff;
+}
+.admin-theme-forest .vkb-key {
+  border-color: var(--wf-line);
+  background: var(--wf-paper);
+  color: var(--wf-ink);
+}
+.admin-theme-forest .vkb-key:hover { background: var(--wf-cream); border-color: var(--wf-bark); }
+.admin-theme-forest .vkb-key:active { background: #efe6d6; }
+.admin-theme-forest .vkb-key.vkb-wide,
+.admin-theme-forest .vkb-key.vkb-space { background: #f4eee3; }
+.admin-theme-forest .vkb-key.vkb-caps-on { background: var(--wf-forest); border-color: var(--wf-forest); color: #fff; }
+
+/* ── 워크스페이스 틀 ─────────────────────────────────────── */
+.admin-theme-forest .diag-monitor-wrap.admin-workspace {
+  background: var(--wf-cream);
+  color: var(--wf-ink);
+}
+.admin-theme-forest .admin-diagnostic-navigation {
+  border-right: 1.5px solid var(--wf-line);
+  background: #f7f2e8;
+}
+.admin-theme-forest .admin-navigation-heading strong { color: var(--wf-forest); }
+.admin-theme-forest .admin-navigation-heading span,
+.admin-theme-forest .admin-navigation-group h3 { color: var(--wf-muted); }
+.admin-theme-forest .admin-navigation-group.is-current h3 { color: var(--wf-bark); }
+.admin-theme-forest .admin-workspace .diag-tab-button { color: var(--wf-ink); }
+.admin-theme-forest .admin-workspace .diag-tab-button:hover {
+  background: #efe6d6;
+  color: var(--wf-forest);
+}
+.admin-theme-forest .admin-workspace .diag-tab-button.active {
+  border-color: var(--wf-forest);
+  background: var(--wf-forest);
+  color: #fff;
+  box-shadow: none;
+}
+.admin-theme-forest .admin-workspace button:focus-visible,
+.admin-theme-forest .admin-workspace summary:focus-visible,
+.admin-theme-forest .admin-workspace input:focus-visible { outline-color: var(--wf-bark); }
+
+.admin-theme-forest .admin-view-heading {
+  border-bottom: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+}
+.admin-theme-forest .admin-view-category { color: var(--wf-bark); }
+.admin-theme-forest .admin-view-heading h2 { color: var(--wf-forest); }
+.admin-theme-forest .admin-view-heading p { color: var(--wf-muted); }
+
+/* ── 시스템 탭 카드 ──────────────────────────────────────── */
+.admin-theme-forest .admin-system-controls,
+.admin-theme-forest .admin-diagnostic-details {
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+}
+.admin-theme-forest .admin-section-heading { border-bottom-color: var(--wf-line); }
+.admin-theme-forest .admin-section-heading h3,
+.admin-theme-forest .admin-diagnostic-details > summary { color: var(--wf-forest); }
+.admin-theme-forest .admin-section-heading p { color: var(--wf-muted); }
+.admin-theme-forest .admin-diagnostic-details > summary::before { color: var(--wf-bark); }
+.admin-theme-forest .admin-system-controls .diag-control-bar {
+  border-color: var(--wf-line);
+  background: #f7f2e8;
+}
+.admin-theme-forest .admin-system-controls .diag-control-label { color: var(--wf-forest); }
+.admin-theme-forest .admin-system-controls .diag-control-label small,
+.admin-theme-forest .admin-system-controls .manual-motion-status { color: var(--wf-muted); }
+.admin-theme-forest .admin-system-controls .manual-return-btn {
+  border-color: var(--wf-forest);
+  background: var(--wf-paper);
+  color: var(--wf-forest);
+}
+.admin-theme-forest .admin-system-controls .manual-return-btn:hover:not(:disabled) { background: #efe6d6; }
+.admin-theme-forest .admin-system-controls .steering-tuning-card {
+  border-top-color: var(--wf-line);
+  background: var(--wf-paper);
+}
+.admin-theme-forest .admin-diagnostic-counts span { border-color: var(--wf-line); color: var(--wf-muted); }
+.admin-theme-forest .admin-diagnostic-details .diag-monitor { border-top-color: var(--wf-line); }
+.admin-theme-forest .admin-diagnostic-details .diag-tree-header {
+  background: #f4eee3;
+  color: var(--wf-forest);
+}
+.admin-theme-forest .admin-diagnostic-details .diag-group-header,
+.admin-theme-forest .admin-diagnostic-details .diag-item { border-bottom-color: #ebe3d5; }
+.admin-theme-forest .admin-diagnostic-details .diag-group-header { background: #f7f2e8; }
+.admin-theme-forest .admin-diagnostic-details .diag-item:hover { background: #efe6d6; }
+.admin-theme-forest .diag-tree,
+.admin-theme-forest .diag-detail { background: var(--wf-paper); }
+
+/* ── 텔레메트리 탭(안전·주행·센서·지도·충전) ─────────────── */
+.admin-theme-forest .telemetry-workspace,
+.admin-theme-forest .admin-workspace .telemetry-view { background: var(--wf-cream); color: var(--wf-ink); }
+.admin-theme-forest .telemetry-session-strip {
+  border-bottom: 1.5px solid var(--wf-line);
+  background: #f7f2e8;
+  color: var(--wf-muted);
+}
+.admin-theme-forest .telemetry-source {
+  border-color: var(--wf-line);
+  background: var(--wf-paper);
+}
+.admin-theme-forest .telemetry-section,
+.admin-theme-forest .admin-workspace .telemetry-section {
+  border: 1.5px solid var(--wf-line);
+  background: var(--wf-paper);
+}
+.admin-theme-forest .telemetry-section-header,
+.admin-theme-forest .admin-workspace .telemetry-section-header { border-bottom-color: var(--wf-line); }
+.admin-theme-forest .telemetry-section-header h3,
+.admin-theme-forest .admin-workspace .telemetry-section-header h3 { color: var(--wf-forest); }
+.admin-theme-forest .admin-workspace .telemetry-section-header span { color: var(--wf-muted); }
+.admin-theme-forest .telemetry-metric,
+.admin-theme-forest .admin-workspace .telemetry-safety-view .telemetry-metric { background: #f7f2e8; }
+.admin-theme-forest .admin-workspace .telemetry-safety-view .telemetry-metric { border-color: #ebe3d5; }
+.admin-theme-forest .telemetry-subsection { border-top-color: var(--wf-line); }
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-engage-row {
+  border-color: var(--wf-line);
+  background: var(--wf-paper);
+}
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-engage-btn {
+  border-color: var(--wf-forest);
+  background: var(--wf-paper);
+  color: var(--wf-forest);
+}
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-engage-btn:hover:not(:disabled) { background: #efe6d6; }
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-engage-btn.engage-on {
+  border-color: var(--wf-forest);
+  background: var(--wf-forest);
+  color: #fff;
+}
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-engage-btn.engage-on:hover:not(:disabled) { background: var(--wf-forest-2); }
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-evidence-block { background: #f7f2e8; }
+
+/* ── 스냅샷 탭 ───────────────────────────────────────────── */
+.admin-theme-forest .snapshot-tab-view { background: var(--wf-cream); }
+.admin-theme-forest .snapshot-control-card {
+  border-color: var(--wf-line);
+  background: var(--wf-paper);
+}
+
+/* ── 상단 띠: 대기 화면 배너처럼 짙은 숲색 + 나무색 줄, 뒤로가기는 흰 버튼 ── */
+.admin-theme-forest .modal-header {
+  border-bottom: 6px solid var(--wf-bark);
+  background: var(--wf-forest);
+}
+.admin-theme-forest .modal-title { color: #fff; }
+.admin-theme-forest .modal-back-btn {
+  border: 1.5px solid #fff;
+  background: #fff;
+  color: var(--wf-forest);
+}
+.admin-theme-forest .modal-back-btn:hover { background: var(--wf-cream); }
+
+/* ── 안전정지·복구 초기화 카드 ───────────────────────────── */
+.admin-theme-forest .safety-reset-card,
+.admin-theme-forest .admin-workspace .telemetry-safety-view .safety-reset-card {
+  border-color: var(--wf-line);
+  border-left-color: var(--wf-forest);
+  background: var(--wf-paper);
+  color: var(--wf-ink);
+}
+.admin-theme-forest .safety-reset-heading span { color: var(--wf-bark); }
+.admin-theme-forest .safety-reset-heading h3 { color: var(--wf-forest); }
+.admin-theme-forest .safety-reset-card button {
+  border-color: var(--wf-forest);
+  background: var(--wf-paper);
+  color: var(--wf-forest);
+}
+.admin-theme-forest .safety-reset-card button.safety-reset-request {
+  border-color: var(--wf-forest);
+  background: var(--wf-forest);
+  color: #fff;
+}
+.admin-theme-forest .safety-reset-card button:focus-visible { outline-color: var(--wf-bark); }
+.admin-theme-forest .safety-reset-message:not(.safety-reset-error) { background: #f4eee3; }

@@ -39,7 +39,7 @@ describe('local-only driving preview', () => {
     act(() => root.render(<DrivingPreview />));
     act(() => host.querySelector('[data-testid=display]').click());
     expect(host.querySelector('[data-preview=returned]')).not.toBeNull();
-    expect(host.textContent).toContain('배송 목적지 선택');
+    expect(host.textContent).toContain('짐을 받을 사이트를 골라주세요');
     expect(host.querySelector('[data-ui=operator-site-B7]')).not.toBeNull();
     act(() => host.querySelector('[data-ui=open-driving-display]').click());
     expect(host.querySelector('[data-testid=display]').textContent).toContain('B7');

@@ -2,14 +2,20 @@ import React from 'react';
 
 // HH_261026 - Categories organize existing view IDs without owning data or commands.
 export const ADMIN_DIAGNOSTIC_CATEGORIES = [
+  // HJ_261118 - 현장에서 가장 자주 쓰는 운영 제어를 맨 위에 둔다.
+  { id: 'operation', label: '운영', tabIds: ['operation'] },
   { id: 'driving', label: '주행·안전', tabIds: ['safety', 'trajectory'] },
   { id: 'sensors', label: '센서', tabIds: ['gnss', 'proximity', 'camera'] },
   { id: 'perception', label: '지도·인지', tabIds: ['perception'] },
   { id: 'parking', label: '주차·도킹', tabIds: ['docking'] },
-  { id: 'system', label: '시스템', tabIds: ['system', 'snapshot'] },
+  { id: 'system', label: '진단', tabIds: ['system', 'snapshot'] },
 ];
 
 const ADMIN_DIAGNOSTIC_VIEWS = {
+  operation: {
+    title: '운영 제어',
+    help: '복귀·충전, 전조등, 조향 설정과 소프트웨어 종료를 조작합니다.',
+  },
   safety: {
     title: '안전 · 제어',
     help: '주행 허가와 안전 정지 원인을 확인합니다.',
@@ -39,8 +45,8 @@ const ADMIN_DIAGNOSTIC_VIEWS = {
     help: '주차 정책, 충전 접점과 도킹 진행 상태를 확인합니다.',
   },
   system: {
-    title: '시스템 상태',
-    help: '운영 제어와 장치별 진단을 구분해서 확인합니다.',
+    title: '시스템 진단',
+    help: '장치별 진단 상태(system checker)를 확인합니다.',
   },
   snapshot: {
     title: '스냅샷',
@@ -52,7 +58,7 @@ export function getAdminDiagnosticView(tabId) {
   const category = ADMIN_DIAGNOSTIC_CATEGORIES.find(group => group.tabIds.includes(tabId));
   return {
     ...(ADMIN_DIAGNOSTIC_VIEWS[tabId] || ADMIN_DIAGNOSTIC_VIEWS.system),
-    category: category?.label || '시스템',
+    category: category?.label || '진단',
   };
 }
 

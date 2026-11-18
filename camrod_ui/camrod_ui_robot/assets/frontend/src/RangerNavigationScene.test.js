@@ -27,7 +27,8 @@ test('WebGL failure is explicit and never replaced with a static robot image', (
   expect(host.querySelector('img, image')).toBeNull();
   expect(host.querySelector('[data-model-status]').getAttribute('data-model-status')).toBe('webgl-unavailable');
   expect(host.textContent).not.toContain('Ranger 3D 모델');
-  expect(host.textContent).toContain('전방 인지 수신 대기');
+  // HJ_261118 - The passenger scene no longer shows the perception-wait chip.
+  expect(host.textContent).not.toContain('전방 인지 수신 대기');
   expect(host.querySelector('[data-navigation="zoom"]').textContent).toBe('외관 보기');
 });
 
@@ -97,7 +98,9 @@ test('live route receives the illustrated roadside scene only while pose and rou
   expect(hasIllustrativeRoute({ ...onRoute, connected: false })).toBe(false);
   expect(hasIllustrativeRoute({ ...onRoute, pose: { ...onRoute.pose, age_s: 5 } })).toBe(false);
   act(() => root.render(<RangerNavigationScene data={onRoute} />));
-  expect(host.textContent).toContain('실제 경로 · 도로변 예시 배경 (실제 지형 아님)');
+  // HJ_261118 - The map/scenery caption was removed; the route chip remains.
+  expect(host.textContent).toContain('주행 경로');
+  expect(host.textContent).not.toContain('실제 지형 아님');
   expect(host.querySelector('[data-demo]').getAttribute('data-demo')).toBe('false');
 });
 
@@ -129,8 +132,8 @@ test('received base map has metre-space geometry even when there is no route', (
   expect(lines.visible).toBe(true);
   expect(syncBaseMapVisibility(lines, false)).toBe(false);
   act(() => root.render(<RangerNavigationScene data={{ ...data, baseMap, route: [] }} />));
-  expect(host.textContent).toContain('수신 Lanelet 지도 · 경로 대기');
-  expect(host.textContent).not.toContain('수신 Lanelet 지도 · 실제 경로');
+  // HJ_261118 - No Lanelet caption in the passenger scene.
+  expect(host.textContent).not.toContain('수신 Lanelet 지도');
 });
 
 // HH_261002 - Static road surfaces survive mission cancellation, stale pose, and

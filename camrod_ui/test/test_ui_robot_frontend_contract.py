@@ -79,8 +79,9 @@ class RobotUiFrontendContractTest(unittest.TestCase):
 
         self.assertNotIn("/로봇안전안내.png", usage)
         for heading in ("서비스 선택 방법", "로봇 정지 방법"):
-            self.assertEqual(usage.count(f"<span>{heading}</span>"), 1)
-        self.assertNotIn("<span>주의 사항</span>", usage)
+            # HJ_261118 - Headings render through <T> for the Korean/English toggle.
+            self.assertEqual(usage.count(f"<span><T>{heading}</T></span>"), 1)
+        self.assertNotIn("주의 사항", usage)
         self.assertNotIn("재출발 방법", usage)
 
         for image_name in (
@@ -109,32 +110,16 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn(".guide-card-copy", self.css)
         self.assertIn(".guide-service-admin-notice", self.css)
 
-    def test_service_selection_requires_safety_confirmation(self) -> None:
-        # [서비스 선택]은 안전 안내를 거친 뒤에만 배송 서비스 선택으로 넘어간다.
-        self.assertIn("const [showServiceSafetyGate, setShowServiceSafetyGate]", self.source)
-        self.assertIn('data-ui="service-safety-gate"', self.source)
-        self.assertIn("<SafetyNoticePanel onConfirm={handleServiceSafetyConfirm} />", self.source)
-
-        panel_start = self.source.index("function SafetyNoticePanel(")
-        panel_end = self.source.index("const SIDE_BUTTONS", panel_start)
-        panel = self.source[panel_start:panel_end]
-        self.assertIn("/로봇안전안내.png", panel)
-        self.assertIn('data-ui="usage-safety-confirm"', panel)
-        self.assertTrue((PUBLIC_ASSETS / "로봇안전안내.png").is_file())
-
+    def test_service_selection_opens_without_safety_gate(self) -> None:
+        # HJ_261118 - [서비스 선택] goes straight to the chooser; the safety
+        # poster gate in front of it was removed at the operator's request.
+        self.assertNotIn("showServiceSafetyGate", self.source)
+        self.assertNotIn('data-ui="service-safety-gate"', self.source)
         handler_start = self.source.index("const handleWaitingClick = () => {")
-        # HH_261024 - Inactivity no longer expires the chooser; inspect the
-        # existing safety-confirmation handlers up to their next effect.
         handler_end = self.source.index("  useEffect(() => {", handler_start)
         handler = self.source[handler_start:handler_end]
-        self.assertIn("setShowServiceSafetyGate(true);", handler)
-
-        confirm_start = self.source.index("const handleServiceSafetyConfirm = () => {")
-        confirm_end = self.source.index("};", confirm_start)
-        confirm = self.source[confirm_start:confirm_end]
-        self.assertIn("setShowServiceSafetyGate(false);", confirm)
-        self.assertIn("setShowServiceSelection(true);", confirm)
-        self.assertIn("setShowWaiting(false);", confirm)
+        self.assertIn("setShowServiceSelection(true);", handler)
+        self.assertIn("setShowWaiting(false);", handler)
 
     def test_parking_and_charging_lifecycle_has_distinct_korean_labels(self) -> None:
         for label in (
@@ -212,12 +197,11 @@ process.stdout.write(JSON.stringify(values));
         )
 
     def test_destination_entry_opens_three_block_service_menu(self) -> None:
-        # 대기 화면 → 안전 안내 → 서비스 선택까지가 한 흐름이다.
+        # HJ_261118 - 대기 화면 → 서비스 선택이 바로 이어진다.
         handler_start = self.source.index("const handleWaitingClick = () => {")
         # HH_261024 - The removed idle timer is not a service-menu boundary.
         handler_end = self.source.index("  useEffect(() => {", handler_start)
         handler = self.source[handler_start:handler_end]
-        self.assertIn("setShowServiceSafetyGate(true);", handler)
         self.assertIn("setShowServiceSelection(true);", handler)
         self.assertIn("setShowWaiting(false);", handler)
 
@@ -235,8 +219,8 @@ process.stdout.write(JSON.stringify(values));
             "로봇을 사이트 앞 도로로 불러요.",
             "service-selection-dock-wrap",
             "관리자용 · 충전 시작",
-            "setShowDeliveryConfirm(true)",
-            "activateDestinationService('recall')",
+            "onClick={() => activateDestinationService('delivery')}",
+            "onClick={() => activateDestinationService('recall')}",
         ):
             self.assertIn(expected, menu)
         self.assertNotIn("관리자 인증", menu)
@@ -247,18 +231,16 @@ process.stdout.write(JSON.stringify(values));
         panel_start = menu.index("<WaitingRuntimeStatusPanel")
         self.assertLess(panel_start, body_start)
         self.assertIn("setShowServiceSelection(true)", self.source)
-        # Recall and docking must confirm through the in-page styled dialog, never
-        # through the browser's native confirm() chrome.
-        self.assertIn("setShowRecallConfirm(true)", menu)
-        self.assertIn("setShowDeliveryConfirm(true)", menu)
+        # HJ_261118 - Delivery and recall open site selection directly; docking
+        # still confirms through the in-page dialog, never native confirm().
+        self.assertNotIn("showDeliveryConfirm", self.source)
+        self.assertNotIn("showRecallConfirm", self.source)
         self.assertNotIn("window.confirm", menu)
         for expected in (
-            "사이트 안으로 짐을 배달해요.<br />",
-            "텐트와 장비가 이동을 막지 않는지 확인해 주세요.",
-            "로봇을 사이트 앞 도로로 불러요.<br />",
             "사이트 안으로는 들어가지 않아요.",
             "배터리 잔량과 관계없이 충전을 요청합니다.",
-            "충전을 시작할까요?<br />",
+            # HJ_261118 - Guest copy is wrapped in t() for the Korean/English toggle.
+            "{t('충전을 시작할까요?')}<br />",
             'className="move-confirm-yes"',
             'className="move-confirm-no"',
         ):
@@ -284,7 +266,7 @@ process.stdout.write(JSON.stringify(values));
         )
         banner_start = self.source.index('className={`mission-role-banner')
         body_start = self.source.index('className={`control-body', banner_start)
-        panel_start = self.source.index('<div className="app">', body_start)
+        panel_start = self.source.index('<div className="app site-board">', body_start)
         self.assertLess(banner_start, body_start)
         self.assertLess(body_start, panel_start)
         self.assertNotIn("destination-intent-badge", self.source)
@@ -420,21 +402,30 @@ process.stdout.write(JSON.stringify(values));
         returning = self.source[self.source.index(") : displayedReturning ? ("):
                                 self.source.index(") : activeSite ? (")]
         self.assertIn("motionNotice?.label || recallProgress.label", returning)
-        self.assertIn("motionNotice?.message || (recallReturnPresentation", returning)
+        # HJ_261118 - The notice still wins; it is only translated before display.
+        self.assertIn("motionNotice?.message ? t(motionNotice.message) : (recallReturnPresentation", returning)
         self.assertIn("onClick={() => requestStopConfirmation('service')}", returning)
         for first, last in ((") : activeSite ? (", ") : activeRecallSite ? ("),
                             (") : activeRecallSite ? (", ") : manualDriveActive ? ("),
                             (") : manualDriveActive ? (", ") : serviceStateName === 'OPERATOR_STOPPED'")):
             block = self.source[self.source.index(first):self.source.index(last)]
             self.assertIn("motionNotice?.message ||", block)
-        self.assertEqual(self.source.count("{guestAdmissionStatus}"), 2)
+        # HJ_261118 - Home and destination screens render it through the shared forest header.
+        self.assertEqual(self.source.count("{admissionStatus}"), 1)
+        self.assertEqual(
+            self.source.count("renderForestHeader({ admissionStatus: guestAdmissionStatus })"), 2
+        )
         self.assertNotIn('className="guest-recall-overlay"', self.source)
         arrival = self.source[self.source.index(") : arrivedSite && !recallTurnaroundInProgress ? ("):
                               self.source.index(") : ['CHARGING'")]
         self.assertNotIn("motionNotice", arrival)
         self.assertIn("recallReturnInstructions(arrivedSite, recallFinalReturnReady)", arrival)
         self.assertIn("recallCompletionLabel(arrivedSite, recallFinalReturnReady)", arrival)
-        self.assertIn("onClick={handleArrivalComplete}", arrival)
+        # HJ_261118 - Arrival actions open a second confirmation; only it completes.
+        self.assertIn("onClick={requestArrivalComplete}", arrival)
+        self.assertIn("onClick={confirmArrivalComplete}", self.source)
+        confirm = self.source[self.source.index("const confirmArrivalComplete = () => {"):]
+        self.assertIn("handleArrivalComplete();", confirm[:200])
 
     def test_imported_png_assets_are_present_and_referenced(self) -> None:
         for filename in ("information_nobg.png", "hiking_trail_nobg.png"):
@@ -542,7 +533,7 @@ process.stdout.write(JSON.stringify(values));
             "'호출 서비스' : '배달 서비스'",
             "사이트 안으로는 들어가지 않아요.",
             "destinationIntent === 'delivery'",
-            "텐트 · 호출 가능",
+            "'텐트 있음'",
         ):
             self.assertIn(token, self.source)
 
@@ -960,22 +951,19 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         ):
             self.assertIn(field, self.service_evidence_source)
 
-    def test_public_service_evidence_preserves_waiting_screen_two_by_two_grid(self) -> None:
+    def test_public_service_evidence_preserves_waiting_screen_service_cards(self) -> None:
         self.assertIn("<ServiceEvidenceSummary", self.source)
         self.assertIn("setActiveModal('service-evidence')", self.source)
         self.assertIn("<ServiceEvidenceDashboard", self.source)
-        self.assertIn(
-            "grid-template-rows: auto repeat(2, minmax(0, 1fr));",
-            self.css,
-        )
         self.assertIn(".evidence-summary-strip", self.css)
         self.assertIn("grid-column: 1 / -1;", self.css)
-        # Destination plus the three established information cards remain the
-        # only children that fill the two service-card rows.
-        self.assertIn(
-            "SIDE_BUTTONS.filter(btn => btn.id !== 'settings').map",
-            self.source,
-        )
+        # HJ_261118 - Forest home theme: the evidence strip sits above one hero
+        # destination card plus exactly the three established information cards.
+        self.assertIn('className="waiting-hero" data-ui="operator-open-destination"', self.source)
+        self.assertIn("SIDE_BUTTONS.filter(btn => HOME_CARD_ART[btn.id]).map", self.source)
+        for card_id in ("usage", "facility", "routes"):
+            self.assertRegex(self.source, rf"\n  {card_id}: {{ image: '[^']+'")
+        self.assertIn("grid-template-rows: repeat(3, minmax(0, 1fr));", self.css)
 
     def test_active_service_screen_exposes_current_trip_distance(self) -> None:
         self.assertIn("<ServiceTripBadge", self.source)

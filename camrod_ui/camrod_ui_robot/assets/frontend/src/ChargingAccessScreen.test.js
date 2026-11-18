@@ -213,11 +213,11 @@ test.each(['delivery', 'recall'])('actual App allows existing %s selection after
   expect(button('operator-intent-delivery')).toBeNull();
   expect(button('operator-site-B1')).toBeNull();
   await tap(button('charging-open-services'));
-  expect(button('service-safety-gate')).not.toBeNull();
-  await tap(button('usage-safety-confirm'));
+  // HJ_261118 - Services open directly; there is no safety-poster gate.
+  expect(button('service-safety-gate')).toBeNull();
   expect(button('operator-service-selection-screen')).not.toBeNull();
   await tap(button(`operator-intent-${intent}`));
-  await tap(button(`operator-service-${intent}-confirm`));
+  // HJ_261118 - Delivery and recall open site selection directly (no confirm dialogs).
   expect(button('operator-site-B1').disabled).toBe(false);
   expect(sockets[0].send).not.toHaveBeenCalled();
   expect(posts()).toHaveLength(0);
@@ -257,7 +257,6 @@ test('charging-screen Stop keeps cargo access while the robot stays on the charg
 test('OPERATOR_STOPPED during service selection returns to cargo access while charging', async () => {
   await bootApp(13, 'CHARGING', status({ battery_percentage: 80 }));
   await tap(button('charging-open-services'));
-  await tap(button('usage-safety-confirm'));
   await stoppedFrame();
   expect(button('operator-service-selection-screen')).not.toBeNull();
   await backToStandby();
@@ -293,7 +292,6 @@ test('measured stop shows the loading cue for 3 s, then ordinary standby', async
   expect(button('charging-screen')).toBeNull();
   expect(button('operator-waiting-screen')).not.toBeNull();
   await tap(button('operator-open-destination'));
-  await tap(button('usage-safety-confirm'));
   expect(backButtonText()).toBe('← 대기 화면으로');
   await backToStandby();
   expect(button('operator-waiting-screen')).not.toBeNull();
@@ -321,7 +319,6 @@ test('an unconfirmed stop keeps the charging screen; the 3 s cue starts only onc
 test('during the cue the back button names the charging screen and returns there', async () => {
   await bootApp(0, 'DROP_ZONE_WAIT', readyStatus());
   await tap(button('charging-open-services'));
-  await tap(button('usage-safety-confirm'));
   expect(backButtonText()).toBe('← 충전 화면으로');
   await backToStandby();
   expect(button('charging-screen')).not.toBeNull();
@@ -330,13 +327,11 @@ test('during the cue the back button names the charging screen and returns there
 test('while charging the back button reads "충전 화면으로"; without charging it reads "대기 화면으로"', async () => {
   await bootApp(13, 'CHARGING', status({ battery_percentage: 80 }));
   await tap(button('charging-open-services'));
-  await tap(button('usage-safety-confirm'));
   expect(backButtonText()).toBe('← 충전 화면으로');
   await act(async () => root.unmount());
   root = createRoot(host); sockets = [];
   await bootApp(0, 'DROP_ZONE_WAIT', status({ platform_is_charging: false, can_leave: false, battery_percentage: 80 }));
   expect(button('operator-waiting-screen')).not.toBeNull();
   await tap(button('operator-open-destination'));
-  await tap(button('usage-safety-confirm'));
   expect(backButtonText()).toBe('← 대기 화면으로');
 });

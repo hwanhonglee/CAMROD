@@ -20,7 +20,7 @@ jest.mock('./SnapshotControl', () => function MockSnapshotControl() {
 });
 
 const act = React.act || legacyAct;
-const tabs = ['system', 'gnss', 'proximity', 'camera', 'trajectory', 'perception', 'safety', 'docking', 'snapshot'];
+const tabs = ['operation', 'system', 'gnss', 'proximity', 'camera', 'trajectory', 'perception', 'safety', 'docking', 'snapshot'];
 const diagnostics = [
   { level: 2, name: 'sensor/error', message: '연결을 확인하세요', values: [{ key: 'source', value: 'front' }] },
   { level: 1, name: 'sensor/warn', message: '수신 지연' },
@@ -65,29 +65,32 @@ afterEach(() => {
   delete global.IS_REACT_ACT_ENVIRONMENT;
 });
 
-test('five categories retain every existing diagnostic ID exactly once', async () => {
+// HJ_261118 - 운영 분류(운영 제어 탭)를 맨 위에 추가하고 시스템 분류는 진단으로 바꿨다.
+test('six categories retain every existing diagnostic ID exactly once', async () => {
   await render();
   expect(ADMIN_DIAGNOSTIC_CATEGORIES.map(category => category.label)).toEqual([
-    '주행·안전', '센서', '지도·인지', '주차·도킹', '시스템',
+    '운영', '주행·안전', '센서', '지도·인지', '주차·도킹', '진단',
   ]);
   expect(ADMIN_DIAGNOSTIC_CATEGORIES.flatMap(category => category.tabIds).sort()).toEqual([...tabs].sort());
   tabs.forEach(id => expect(host.querySelectorAll(`[data-ui="operator-diagnostic-tab-${id}"]`)).toHaveLength(1));
-  expect(tabButton('system').getAttribute('aria-selected')).toBe('true');
-  expect(host.querySelector('.admin-view-heading h2').textContent).toBe('시스템 상태');
+  expect(tabButton('operation').getAttribute('aria-selected')).toBe('true');
+  expect(host.querySelector('.admin-view-heading h2').textContent).toBe('운영 제어');
   expect(host.querySelector('.admin-system-controls').textContent).toContain('복귀 · 자동 주차');
+  expect(host.querySelector('[data-ui="operator-bringup-shutdown"]')).not.toBeNull();
+  expect(host.querySelector('.admin-diagnostic-details')).toBeNull();
   expect(posts()).toHaveLength(0);
 });
 
 test('every category selects its existing view and title without sending a command', async () => {
   await render();
-  for (const id of ['safety', 'trajectory', 'gnss', 'proximity', 'camera', 'perception', 'docking', 'snapshot', 'system']) {
+  for (const id of ['safety', 'trajectory', 'gnss', 'proximity', 'camera', 'perception', 'docking', 'snapshot', 'system', 'operation']) {
     await tap(tabButton(id));
     expect(host.querySelector('.admin-view-heading h2').textContent).toBe(getAdminDiagnosticView(id).title);
     expect(tabButton(id).getAttribute('aria-selected')).toBe('true');
     expect(host.querySelectorAll('[role="tab"][aria-selected="true"]')).toHaveLength(1);
     if (id === 'snapshot') {
       expect(host.querySelector('[data-ui="test-snapshot-view"]')).not.toBeNull();
-    } else if (id !== 'system') {
+    } else if (id !== 'system' && id !== 'operation') {
       const view = host.querySelector('[data-ui="test-telemetry-view"]');
       expect(view.getAttribute('data-tab')).toBe(id);
       expect(view.getAttribute('data-admin')).toBe('operator');
@@ -98,6 +101,8 @@ test('every category selects its existing view and title without sending a comma
 
 test('system details remain available, selectable and collapsible with the original refresh policy', async () => {
   await render();
+  await tap(tabButton('system'));
+  expect(host.querySelector('.admin-system-controls')).toBeNull();
   const details = host.querySelector('.admin-diagnostic-details');
   expect(details.open).toBe(true);
   expect(details.querySelector('summary').textContent).toContain('오류 1');
@@ -139,4 +144,35 @@ test('system light and return controls retain their explicit handlers', async ()
   expect(posts()).toHaveLength(0);
   await tap([...host.querySelectorAll('.manual-return-btn')].find(button => button.textContent === '복귀 · 자동 주차'));
   expect(posts()).toEqual([['/ui/manual_return', { method: 'POST' }]]);
+});
+
+// HJ_261118 - bringup 종료는 두 번 확인한 뒤에만 관리자 인증과 confirm:true 로 요청한다.
+test('bringup shutdown asks once more and posts an authenticated explicit confirm', async () => {
+  await render();
+  await act(async () => {});
+  const button = host.querySelector('[data-ui="operator-bringup-shutdown"]');
+  expect(button.disabled).toBe(false);
+  await tap(button);
+  expect(posts()).toHaveLength(0);
+  await tap(host.querySelector('[data-ui="operator-bringup-shutdown-cancel"]'));
+  expect(host.querySelector('[data-ui="operator-bringup-shutdown-confirm"]')).toBeNull();
+  await tap(button);
+  await tap(host.querySelector('[data-ui="operator-bringup-shutdown-confirm"]'));
+  const shutdown = posts().filter(([url]) => url === '/api/admin/bringup/shutdown');
+  expect(shutdown).toHaveLength(1);
+  expect(JSON.parse(shutdown[0][1].body)).toEqual({ confirm: true });
+  expect(shutdown[0][1].headers.Authorization).toBe(`Basic ${window.btoa('operator:unchanged')}`);
+});
+
+test('bringup shutdown stays disabled while the backend reports a blocker', async () => {
+  global.fetch = jest.fn(async url => ({
+    ok: true,
+    json: async () => url === '/api/admin/bringup/shutdown'
+      ? { available: true, blockers: ['mission_active'], messages: ['미션이 진행 중이에요.'] }
+      : { success: true },
+  }));
+  await render();
+  await act(async () => {});
+  expect(host.querySelector('[data-ui="operator-bringup-shutdown"]').disabled).toBe(true);
+  expect(host.querySelector('.bringup-shutdown-card').textContent).toContain('미션이 진행 중이에요.');
 });

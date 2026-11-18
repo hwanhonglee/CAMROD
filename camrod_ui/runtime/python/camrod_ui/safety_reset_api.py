@@ -9,32 +9,36 @@ from fastapi.responses import JSONResponse
 from camrod_ui.safety_reset import admin_authorized
 
 
-def register_safety_reset_routes(app, node):
-    def authorize(request):
-        # HH_261024 - This new privileged action checks credentials server-side.
-        # Existing diagnostic login remains unchanged. Use TLS/a trusted robot
-        # LAN; Basic authentication is not encryption or Internet hardening.
-        if not admin_authorized(
-                request.headers.get("authorization", ""),
-                os.environ.get("CAMROD_ADMIN_USER", "admin"),
-                os.environ.get("CAMROD_ADMIN_PASSWORD", "1234")):
+def admin_request_denied(request):
+    # HH_261024 - This new privileged action checks credentials server-side.
+    # Existing diagnostic login remains unchanged. Use TLS/a trusted robot
+    # LAN; Basic authentication is not encryption or Internet hardening.
+    if not admin_authorized(
+            request.headers.get("authorization", ""),
+            os.environ.get("CAMROD_ADMIN_USER", "admin"),
+            os.environ.get("CAMROD_ADMIN_PASSWORD", "1234")):
+        return JSONResponse(
+            {"success": False, "error": "admin_authentication_required",
+             "message": "관리자 인증이 필요합니다."}, status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="CAMROD admin"'})
+    origin = request.headers.get("origin")
+    if origin:
+        try:
+            parsed = urlsplit(origin)
+        except ValueError:
             return JSONResponse(
-                {"success": False, "error": "admin_authentication_required",
-                 "message": "관리자 인증이 필요합니다."}, status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="CAMROD admin"'})
-        origin = request.headers.get("origin")
-        if origin:
-            try:
-                parsed = urlsplit(origin)
-            except ValueError:
-                return JSONResponse(
-                    {"success": False, "error": "same_origin_required",
-                     "message": "잘못된 요청 출처입니다."}, status_code=403)
-            if (parsed.scheme, parsed.netloc) != (request.url.scheme, request.url.netloc):
-                return JSONResponse(
-                    {"success": False, "error": "same_origin_required",
-                     "message": "로봇 관리자 화면에서 직접 요청해 주세요."}, status_code=403)
-        return None
+                {"success": False, "error": "same_origin_required",
+                 "message": "잘못된 요청 출처입니다."}, status_code=403)
+        if (parsed.scheme, parsed.netloc) != (request.url.scheme, request.url.netloc):
+            return JSONResponse(
+                {"success": False, "error": "same_origin_required",
+                 "message": "로봇 관리자 화면에서 직접 요청해 주세요."}, status_code=403)
+    return None
+
+
+def register_safety_reset_routes(app, node):
+    # HJ_261118 - The admin check is shared with the bringup shutdown route.
+    authorize = admin_request_denied
 
     @app.get("/api/admin/safety/reset")
     def get_admin_safety_reset(request: Request):

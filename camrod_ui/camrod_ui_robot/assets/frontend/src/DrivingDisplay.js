@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import './DrivingDisplay.css';
 import RangerNavigationScene from './RangerNavigationScene';
+import { localeOf, useLang, useT } from './i18n';
 import { RANGER_MODEL_URL } from './rangerModelAsset';
 import { areaIsDestination, areaLabelPoint, layoutAreaLabels, normalizeNavigationAreas } from './navigationAreas';
 import { displayBoundaryLines } from './navigationBoundaryCurves';
@@ -301,10 +302,11 @@ function DrivingScene({ data, demo, theme, robotModelUrl }) {
 }
 
 function RouteMap({ data, id }) {
+  const t = useT();
   const ready = Boolean(data.pose && data.route.length > 1);
   const mapReady = Boolean(data.baseMap?.valid
     && (data.baseMap.polylines.length || data.baseMap.areas.length));
-  if (!ready && !mapReady) return <div className="dd-map dd-map--empty" data-testid="driving-map"><Icon name="pin" size={27} /><span>지도 수신 대기</span><small>지도 또는 경로가 수신되면 표시됩니다</small></div>;
+  if (!ready && !mapReady) return <div className="dd-map dd-map--empty" data-testid="driving-map"><Icon name="pin" size={27} /><span>{t('지도 수신 대기')}</span><small>{t('지도 또는 경로가 수신되면 표시됩니다')}</small></div>;
   // HH_261002 - The static, measured lanelet basemap is shown without a mission.
   // A route is a separate overlay and appears only when its own authority is valid.
   const xy = (point) => {
@@ -337,7 +339,7 @@ function RouteMap({ data, id }) {
     anchor: { x: px(area.center.x), y: py(area.center.y) } })));
   const areaById = new Map(areas.map((area) => [area.id, area]));
   return <div className="dd-map" data-testid="driving-map" data-map-source={mapReady ? data.baseMap.source : ''}>
-    <svg viewBox="0 0 292 176" role="img" aria-label={mapReady ? '수신된 Lanelet 지도와 유효한 경로의 축소 지도' : '현재 위치와 수신 경로의 축소 지도'}>
+    <svg viewBox="0 0 292 176" role="img" aria-label={t(mapReady ? '수신된 Lanelet 지도와 유효한 경로의 축소 지도' : '현재 위치와 수신 경로의 축소 지도')}>
       <defs><pattern id={`${id}-map-grid`} width="29" height="29" patternUnits="userSpaceOnUse"><path d="M29 0H0v29" fill="none" className="dd-map-grid" /></pattern></defs>
       <rect width="292" height="176" fill={`url(#${id}-map-grid)`} />
       {areas.map((area) => <path key={`area-${area.id}`} d={`${path(area.points)} Z`}
@@ -364,8 +366,8 @@ function RouteMap({ data, id }) {
       {data.pose && <><circle cx={px(0)} cy={py(0)} r="13" className="dd-map-location-halo" />
         <path d="m0-8 6 14-6-3-6 3Z" transform={`translate(${px(0)} ${py(0)})`} className="dd-map-location" /></>}
     </svg>
-    <span className="dd-map-heading">{data.pose ? '↑ 전방' : '지도 수신 중'}</span>
-    {!ready && <span className="dd-map-route-waiting">경로 수신 대기</span>}
+    <span className="dd-map-heading">{t(data.pose ? '↑ 전방' : '지도 수신 중')}</span>
+    {!ready && <span className="dd-map-route-waiting">{t('경로 수신 대기')}</span>}
   </div>;
 }
 
@@ -396,10 +398,6 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
   useEffect(() => {
     if (confirmStop !== null && confirmStop !== stopMissionIdentity) setConfirmStop(null);
   }, [confirmStop, stopMissionIdentity]);
-  // HH_261001 - Desktop has room to show the real sensor feed status without hiding it
-  // behind a disclosure. Keep the native details control for compact screens.
-  const [sensorDetailsOpen, setSensorDetailsOpen] = useState(() =>
-    typeof window !== 'undefined' && window.innerWidth > 940);
   // HH_261001 - Advance sample age even when transport stalls without closing its socket.
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(timer); }, []);
   // HH_261001 - The original header/status cards consume different heights on each device.
@@ -425,6 +423,10 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
     return () => { if (previous?.isConnected && typeof previous.focus === 'function') previous.focus({ preventScroll: true }); };
   }, []);
   const data = normalizeDrivingSnapshot(snapshot, Math.max(0, (now - receivedAt) / 1000));
+  // HJ_261118 - 손님 화면 한·영 전환. 문장은 한국어 원문을 두고 표시 직전에 t()로 바꾼다.
+  const lang = useLang();
+  const t = useT();
+  const en = lang === 'en';
   const distance = formatDistance(data.remainingDistance);
   const duration = formatDuration(data.remainingTime);
   const label = missionStatus(data);
@@ -434,12 +436,23 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
   // HH_261102 - Keep the same customer-facing service name on selection and navigation screens.
   const serviceLabel = data.mission.intent === 'recall' ? '호출 서비스'
     : data.mission.intent === 'delivery' ? '배달 서비스' : '주행 현황';
-  const sensorCount = ['lidar', 'camera', 'radar'].filter(name => Boolean(data.sensors[name])).length;
+  // HJ_261118 - Passenger-facing trip title, pace pill and arrival clock.
+  const stoppedPhase = ['SAFETY_STOP', 'STOPPED'].includes(data.mission.phase);
+  const tripTitle = !data.connected || stoppedPhase || !data.mission.active
+    ? label
+    : returning ? '대기·충전 장소로 돌아가고 있어요'
+      : data.mission.site ? (en ? `Heading to site ${data.mission.site}` : `${data.mission.site} 사이트로 이동하고 있어요`) : label;
+  const pace = stoppedPhase ? { tone: 'warn', label: PHASE_LABELS[data.mission.phase] }
+    : data.speedKmh === null ? { tone: 'idle', label: '속도 수신 대기' }
+      : data.speedKmh < 0.3 ? { tone: 'idle', label: '잠시 멈춤' }
+        : data.speedKmh < 3 ? { tone: 'ok', label: '천천히 이동 중' } : { tone: 'ok', label: '이동 중' };
+  const arrivalClock = data.remainingTime === null ? null
+    : new Date(now + data.remainingTime * 1000).toLocaleTimeString(localeOf(lang), { hour: 'numeric', minute: '2-digit' });
   const warningLabels = [
-    !data.connected ? '주행 데이터 연결 끊김 · 최신 정보 수신 대기' : null,
-    systemHealth !== 'OK' ? `${({ STARTING: '시스템 시작 중', WARNING: '시스템 경고', ERROR: '시스템 오류' })[systemHealth] || '시스템 상태 확인 중'} · 서비스 화면에서 상세 상태 확인` : null,
-    batteryPolicy && batteryPolicy.tone !== 'ok' ? batteryPolicy.label : null,
-    data.mission.phase === 'SAFETY_STOP' ? '안전 정지 중 · 운행 상태 확인 필요' : null,
+    !data.connected ? t('주행 데이터 연결 끊김 · 최신 정보 수신 대기') : null,
+    systemHealth !== 'OK' ? `${t(({ STARTING: '시스템 시작 중', WARNING: '시스템 경고', ERROR: '시스템 오류' })[systemHealth] || '시스템 상태 확인 중')} · ${t('서비스 화면에서 상세 상태 확인')}` : null,
+    batteryPolicy && batteryPolicy.tone !== 'ok' ? t(batteryPolicy.label) : null,
+    data.mission.phase === 'SAFETY_STOP' ? t('안전 정지 중 · 운행 상태 확인 필요') : null,
   ].filter(Boolean);
   const interactive = (target) => target instanceof Element
     && Boolean(target.closest('button, a, input, select, textarea, summary, [data-dd-interactive]'));
@@ -471,7 +484,7 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
   return (
     <section ref={displayRef} className={`driving-display dd-theme-${theme === 'dark' ? 'dark' : 'light'}${embedded ? ' dd-embedded' : ''}${embedded && availableHeight > 0 && availableHeight <= 620 ? ' dd-density-compact' : ''}${embedded && availableHeight > 0 && availableHeight <= 460 ? ' dd-density-short' : ''}`}
       data-testid="driving-display" data-demo={demo ? 'true' : 'false'}
-      role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : "true"} aria-label={demo ? '주행 화면 시연. 실제 주행 아님' : '주행 현황'}
+      role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : "true"} aria-label={t(demo ? '주행 화면 시연. 실제 주행 아님' : '주행 현황')}
       aria-describedby={`${id}-dismiss-hint`} tabIndex={0}
       onPointerDown={pointerDown} onPointerMove={pointerMove}
       onPointerUp={(event) => event.stopPropagation()}
@@ -484,88 +497,66 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
         } else if ((event.key === 'Escape' || event.key === 'Enter' && event.target === event.currentTarget)
           && !interactive(event.target)) { gesture.current = null; dismiss(event); }
       }}>
-      <header className="dd-header">
-        <div className="dd-brand"><img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" /><div><strong>CAMROD</strong><small>월악산 국립공원</small></div></div>
-        <span className="dd-top-mission">현재 미션<strong>{serviceLabel}</strong></span>
-        <div className="dd-header-chips">
-          {demo && <span className="dd-demo-chip">UI 시연 · 실제 주행 아님</span>}
-          <span className={`dd-chip ${data.connected ? '' : 'dd-chip--unavailable'}`}><span className="dd-chip-dot" /><span>{data.connected ? '연결됨' : '연결 끊김'}</span></span>
-          <span className={`dd-chip ${!data.sensors.gnss ? 'dd-chip--unavailable' : ''}`}><Icon name="satellite" size={17} /><span>GNSS</span><strong>{data.sensors.gnss || '수신 대기'}</strong></span>
-          <span className={`dd-chip ${data.battery === null ? 'dd-chip--unavailable' : data.battery < 25 ? 'dd-chip--warning' : ''}`}><Icon name="battery" size={18} /><strong>{data.battery === null ? '—' : Math.round(data.battery)}<span className="dd-chip-unit">%</span></strong></span>
-          <time className="dd-clock" dateTime={new Date(now).toISOString()}>{new Date(now).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</time>
+      {/* HJ_261118 - Forest layout: trip bar, wide live 3D scene on the left,
+          route map + arrival/speed card on the right. Scene and map rendering
+          are unchanged; only their placement moved. */}
+      <header className="dd-header dd-trip">
+        <span className="dd-face" aria-hidden="true"><i /><i /></span>
+        <div className="dd-trip-copy">
+          <h1 className={`dd-mission-title${['SAFETY_STOP', 'STOPPED'].includes(data.mission.phase) ? ' dd-mission-title--warning' : ''}`}>{t(tripTitle)}</h1>
+          <p className="dd-mission-description">{t(serviceLabel)} · {t(label)}</p>
         </div>
+        {demo && <span className="dd-demo-chip">{t('UI 시연 · 실제 주행 아님')}</span>}
+        <span className={`dd-pace dd-pace--${pace.tone}`}><i />{t(pace.label)}</span>
         <div className="dd-header-actions">
-          {onToggleTheme && <button type="button" className="dd-action dd-theme-action" aria-label={theme === 'light' ? '다크 모드' : '라이트 모드'}
-            onClick={(event) => keepOnDisplay(event, onToggleTheme)}>{theme === 'light' ? '다크' : '라이트'}</button>}
           {onSafetyStop && !demo && <button type="button" className="dd-action dd-stop-action"
             disabled={!stopMissionIdentity}
             onClick={(event) => keepOnDisplay(event, () => {
               if (stopMissionIdentity) setConfirmStop(stopMissionIdentity);
-            })}>운행 정지</button>}
-          <button type="button" className="dd-action dd-back-action" onClick={event => dismiss(event, true)}>{data.mission.active ? '서비스 화면' : '홈으로'}</button>
+            })}><span aria-hidden="true" className="dd-stop-mark" />{en ? 'Stop' : '운행 정지'}</button>}
+          <button type="button" className="dd-action dd-back-action" onClick={event => dismiss(event, true)}>{t(data.mission.active ? '서비스 화면' : '홈으로')}</button>
         </div>
       </header>
       {warningLabels.length > 0 && <div className="dd-alerts" role="alert">{warningLabels.map((warning, index) => <span key={`${index}-${warning}`}>{warning}</span>)}</div>}
 
       <div className="dd-main">
-        <aside className="dd-left">
-          <div className="dd-eyebrow">현재 속도</div>
-          <div className="dd-speed" data-testid="driving-speed"><span className="dd-speed-number">{data.speedKmh === null ? '—' : data.speedKmh.toFixed(1)}</span><span className="dd-speed-unit">km/h</span></div>
-          <div className="dd-speed-caption">{data.speed === null ? '속도 정보 수신 대기' : '로봇 기준 주행 속도'}</div>
-
-          <div className="dd-mission">
-            <span className="dd-section-label">주행 상태</span>
-            <h1 className={`dd-mission-title${['SAFETY_STOP', 'STOPPED'].includes(data.mission.phase) ? ' dd-mission-title--warning' : ''}`}>{label}</h1>
-            <p className="dd-mission-description">{missionDescription(data)}</p>
-            <div className="dd-destination"><span className="dd-destination-icon"><Icon name="pin" size={21} /></span><div><span>{returning ? '복귀 위치' : '목적지'}</span><strong>{destination}</strong></div></div>
-          </div>
-
-          <details className="dd-sensors" data-dd-interactive open={sensorDetailsOpen}
-            onToggle={event => setSensorDetailsOpen(event.currentTarget.open)}
-            onClick={event => event.stopPropagation()}
-            onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-            onKeyDown={event => event.stopPropagation()}>
-            <summary><Icon name="scan" size={17} /><span>센서 상태</span><small>{sensorCount}/3 수신</small></summary>
-            {['lidar', 'camera', 'radar'].map((name) => <div className="dd-sensor-row" key={name}><span>{({ lidar: 'LiDAR', camera: 'Camera', radar: 'Radar' })[name]}</span><span className={data.sensors[name] ? 'dd-sensor-value' : 'dd-sensor-value dd-sensor-value--missing'}><i />{data.sensors[name] || '정보 없음'}</span></div>)}
-            <p className="dd-sensor-note">{data.perceptionReady ? `${demo ? '시연 ' : ''}감지 데이터 표시` : '좌표가 확인된 감지 데이터만 표시합니다'}</p>
-          </details>
-        </aside>
-
         <DrivingScene data={data} demo={demo} theme={theme} robotModelUrl={robotModelUrl} />
 
         <aside className="dd-right">
           <div className="dd-route-card">
-            <div className="dd-route-heading"><span className="dd-route-icon"><Icon name="arrow" size={22} /></span><div><span className="dd-section-label">다음 이동 안내</span><h2>{nextGuide.title}</h2><small>{nextGuide.distance === null ? nextGuide.detail : `약 ${formatDistance(nextGuide.distance).value}${formatDistance(nextGuide.distance).unit} 앞 · ${nextGuide.detail}`}</small></div></div>
+            <div className="dd-route-heading"><span className="dd-route-icon"><Icon name="arrow" size={22} /></span><div><span className="dd-section-label">{t('다음 이동 안내')}</span><h2>{t(nextGuide.title)}</h2><small>{nextGuide.distance === null ? t(nextGuide.detail) : (en ? `In about ${formatDistance(nextGuide.distance).value} ${formatDistance(nextGuide.distance).unit} · ${t(nextGuide.detail)}` : `약 ${formatDistance(nextGuide.distance).value}${formatDistance(nextGuide.distance).unit} 앞 · ${nextGuide.detail}`)}</small></div></div>
             <div className="dd-map-group">
-              <span className="dd-map-title">{demo ? '시연 경로 지도' : '현재 경로 지도'}</span>
+              <span className="dd-map-title">{t(demo ? '시연 경로 지도' : '현재 경로 지도')}</span>
               <RouteMap data={data} id={id} />
-              <div className="dd-map-caption"><span><i />{demo ? '시연 위치' : '현재 위치'}</span><span>{data.route.length > 1 ? '수신 경로 기준' : '데이터 대기'}</span></div>
             </div>
             <div className="dd-progress-group">
-              <div className="dd-route-metrics">
-                <div><span className="dd-metric-label">남은 거리</span><strong>{distance.value}<small>{distance.unit}</small></strong></div>
-                <div><span className="dd-metric-label">예상 소요</span><strong>{duration.value}<small>{duration.unit}</small></strong></div>
+              <div className="dd-eta">
+                <span className="dd-metric-label">{t(returning ? '복귀 예정' : '도착 예정')}</span>
+                <strong>{data.remainingTime === null ? '—' : (en ? `About ${duration.value} ${t(duration.unit)}` : `약 ${duration.value}${duration.unit}`)}{arrivalClock && <small>{arrivalClock}</small>}</strong>
               </div>
-              <div className="dd-progress-label"><span>경로 진행률</span><span>{data.completion === null ? '산출 대기' : `${Math.round(data.completion)}%`}</span></div>
-              <div className="dd-progress-track" role="progressbar" aria-label="경로 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={data.completion ?? undefined} aria-valuetext={data.completion === null ? '정보 없음' : undefined}><span style={{ width: `${data.completion ?? 0}%` }} /></div>
-              <p className="dd-estimate-note"><Icon name="clock" size={13} />{data.remainingTime === null ? '유효한 주행 예측 정보가 없습니다' : '수신한 경로 기반 추정치입니다'}</p>
+              <div className="dd-route-metrics">
+                <div><span className="dd-metric-label">{t('현재 속도')}</span><strong data-testid="driving-speed"><span className="dd-speed-number">{data.speedKmh === null ? '—' : data.speedKmh.toFixed(1)}</span><small>km/h</small></strong></div>
+                <div><span className="dd-metric-label">{t('남은 거리')}</span><strong>{distance.value}<small>{distance.unit}</small></strong></div>
+              </div>
+              <div className="dd-progress-label"><span>{t('경로 진행률')}</span><span>{data.completion === null ? t('산출 대기') : `${Math.round(data.completion)}%`}</span></div>
+              <div className="dd-progress-track" role="progressbar" aria-label={t('경로 진행률')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={data.completion ?? undefined} aria-valuetext={data.completion === null ? t('정보 없음') : undefined}><span style={{ width: `${data.completion ?? 0}%` }} /></div>
             </div>
           </div>
         </aside>
       </div>
 
-      <footer className="dd-footer"><span id={`${id}-dismiss-hint`}><Icon name="touch" size={16} />일반 화면을 터치하면 서비스 화면으로 돌아갑니다</span><span>ESC</span></footer>
+      <footer className="dd-footer"><strong>{t('로봇이 지나가요. 잠시만 양보해 주세요, 금방 지나갈게요!')}</strong><span id={`${id}-dismiss-hint`}>{t('멈춰야 할 때는 위의 [운행 정지]를 눌러주세요 · 빈 곳을 누르면 서비스 화면으로 돌아갑니다')}</span></footer>
       {confirmStop && <div className="dd-stop-layer" data-dd-interactive onClick={event => event.stopPropagation()}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
         <div className="dd-stop-dialog" role="alertdialog" aria-modal="true" aria-labelledby={`${id}-stop-title`}>
-          <h2 id={`${id}-stop-title`}>운행을 정지하시겠습니까?</h2>
-          <p>기존 운행 정지 기능을 실행합니다.</p>
-          <div><button type="button" onClick={event => keepOnDisplay(event, () => setConfirmStop(null))}>계속 주행</button>
+          <h2 id={`${id}-stop-title`}>{t('운행을 정지하시겠습니까?')}</h2>
+          <p>{t('기존 운행 정지 기능을 실행합니다.')}</p>
+          <div><button type="button" onClick={event => keepOnDisplay(event, () => setConfirmStop(null))}>{t('계속 주행')}</button>
             <button type="button" className="dd-stop-confirm" onClick={event => keepOnDisplay(event, () => {
               const sameMission = confirmStop !== null && confirmStop === stopMissionIdentity;
               setConfirmStop(null);
               if (sameMission && typeof onSafetyStop === 'function') onSafetyStop();
-            })}>예, 운행 정지</button></div>
+            })}>{t('예, 운행 정지')}</button></div>
         </div>
       </div>}
     </section>

@@ -262,3 +262,175 @@
   .dd-footer > span:last-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .driving-display *, .driving-display *::before, .driving-display *::after { animation: none !important; transition: none !important; } }
+
+/* ── HJ_261118 - Forest layout ──────────────────────────────────────────────
+   Trip bar on top, wide live 3D scene on the left, route map + arrival/speed
+   card on the right. Scene/map rendering is unchanged; only placement moved. */
+.driving-display:not(.dd-theme-dark) {
+  --dd-bg: #f2ede3;
+  --dd-card: #fdfbf6;
+  --dd-text: #2b2420;
+  --dd-muted: #6e645a;
+  --dd-faint: #8a7f72;
+  --dd-line: #ddd2c0;
+  --dd-accent: #1f3a2e;
+  --dd-accent-soft: #e7efe5;
+  --dd-map-bg: #eef3ee;
+}
+.dd-header.dd-trip {
+  flex: 0 0 auto;
+  min-height: 72px;
+  margin: 12px clamp(16px, 3vw, 40px) 0;
+  padding: 8px 12px 8px 16px;
+  gap: 14px;
+  border: 1.5px solid var(--dd-line);
+  border-radius: 18px;
+  background: var(--dd-card);
+}
+.dd-face {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  border: 3px solid #2f5a45;
+  border-radius: 14px;
+  background: #1f3a2e;
+}
+.dd-face i { width: 8px; height: 17px; border-radius: 5px; background: #e9f5ec; }
+.dd-trip-copy { flex: 1; min-width: 0; }
+.dd-trip .dd-mission-title {
+  margin: 0;
+  font-size: clamp(18px, 1.9vw, 25px);
+  font-weight: 800;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-trip .dd-mission-description { margin: 2px 0 0; font-size: 13px; -webkit-line-clamp: 1; }
+.dd-pace {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  background: var(--dd-accent-soft);
+  color: var(--dd-accent);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dd-pace i { width: 9px; height: 9px; border-radius: 50%; background: #4caf6a; }
+.dd-pace--idle { background: #efe9de; color: var(--dd-muted); }
+.dd-pace--idle i { background: #a8a29a; }
+.dd-pace--warn { background: #fdecea; color: #a53b36; }
+.dd-pace--warn i { background: #d63c35; }
+.dd-trip .dd-header-actions { gap: 10px; }
+.dd-trip .dd-action { min-height: 50px; padding: 0 18px; border-radius: 14px; font-size: 16px; font-weight: 750; }
+.dd-trip .dd-stop-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-color: #d63c35;
+  background: #d63c35;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+}
+.dd-trip .dd-stop-action:hover, .dd-trip .dd-stop-action:focus-visible { background: #c0312b; border-color: #c0312b; color: #fff; }
+.dd-trip .dd-stop-action:disabled { opacity: .5; cursor: not-allowed; }
+.dd-stop-mark { width: 14px; height: 14px; border-radius: 3px; background: #fff; }
+.dd-trip .dd-back-action { border: 1.5px solid #bfb19b; background: #fff; color: var(--dd-text); }
+.dd-trip .dd-back-action:hover, .dd-trip .dd-back-action:focus-visible { background: #faf7f1; color: var(--dd-text); border-color: #bfb19b; }
+.driving-display .dd-alerts { margin: 8px clamp(16px, 3vw, 40px) 0; border: 1px solid #e8c6a6; border-radius: 10px; }
+
+.driving-display .dd-main {
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 22px;
+  padding: 12px clamp(16px, 3vw, 40px) 0;
+  background: transparent;
+}
+.driving-display .dd-scene { border: 1.5px solid var(--dd-line); border-radius: 20px; }
+.driving-display .dd-right {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border: 1.5px solid var(--dd-line);
+  border-radius: 20px;
+  background: var(--dd-card);
+}
+.driving-display .dd-route-card { gap: 0; justify-content: flex-start; }
+.driving-display .dd-route-heading {
+  min-height: 0;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1.5px solid var(--dd-line);
+}
+.driving-display .dd-route-icon { width: 42px; height: 42px; flex-basis: 42px; border-radius: 12px; background: var(--dd-accent); color: #fff; }
+.driving-display .dd-route-heading h2 { margin: 1px 0; font-size: clamp(17px, 1.5vw, 21px); }
+.driving-display .dd-route-heading small { font-size: 12px; }
+.driving-display .dd-map-group {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--dd-map-bg);
+}
+.driving-display .dd-map-title {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  margin: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: #fffdf8;
+  color: var(--dd-text);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px #3c280a14;
+}
+.driving-display .dd-map { flex: 1; aspect-ratio: auto; max-height: none; min-height: 0; border: 0; border-radius: 0; }
+.driving-display .dd-progress-group { padding: 12px 16px 14px; border-top: 1.5px solid var(--dd-line); }
+.dd-eta { display: flex; flex-direction: column; }
+.dd-eta strong { color: var(--dd-accent); font-size: clamp(28px, 2.8vw, 38px); font-weight: 800; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.dd-eta strong small { margin-left: 8px; color: var(--dd-muted); font-size: 16px; font-weight: 700; letter-spacing: 0; }
+.driving-display .dd-route-metrics { margin-top: 10px; padding: 0; gap: 10px; border: 0; }
+.driving-display .dd-route-metrics > div,
+.driving-display .dd-route-metrics > div + div { padding: 8px 12px; border: 1.5px solid var(--dd-line); border-radius: 12px; background: #fff; }
+.driving-display .dd-route-metrics strong { margin-top: 2px; font-size: clamp(20px, 1.9vw, 26px); letter-spacing: -.02em; }
+.driving-display .dd-route-metrics .dd-speed-number { font-size: inherit; font-weight: inherit; letter-spacing: inherit; line-height: inherit; }
+.driving-display .dd-metric-label { font-size: 12px; font-weight: 600; }
+.driving-display .dd-progress-label { margin-top: 10px; font-size: 12px; font-weight: 600; }
+.driving-display .dd-progress-track { height: 9px; background: #e7dfd0; }
+.driving-display .dd-progress-track > span { background: var(--dd-accent); }
+.driving-display .dd-footer {
+  flex: 0 0 44px;
+  justify-content: space-between;
+  padding: 0 clamp(16px, 3vw, 40px);
+  border-top: 0;
+  background: transparent;
+  font-size: 14px;
+}
+.driving-display .dd-footer strong { color: var(--dd-text); font-weight: 700; }
+.driving-display .dd-footer > span:last-child { color: var(--dd-muted); font-size: 13px; font-weight: 500; }
+@media (max-width: 940px) {
+  .driving-display .dd-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 12px; }
+  .driving-display .dd-right { position: static; height: auto; }
+  .driving-display .dd-scene { margin-bottom: 0; }
+  .driving-display .dd-map-group { display: none; }
+  .dd-pace { display: none; }
+}
+
+/* HJ_261118 - 영어 안내처럼 긴 문장도 하단 띠에서 잘리지 않고 줄바꿈되게 한다(한국어는 한 줄 그대로). */
+.driving-display .dd-footer { flex: 0 0 auto; min-height: 44px; flex-wrap: wrap; row-gap: 2px; padding-top: 4px; padding-bottom: 4px; }
