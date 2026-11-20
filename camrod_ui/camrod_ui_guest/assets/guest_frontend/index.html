@@ -114,7 +114,7 @@
       text-overflow: ellipsis;
     }
 
-    /* Header badges (battery + wifi) */
+    /* Header badges (battery) */
     .header-badges {
       display: flex; align-items: center; gap: 8px;
       flex-shrink: 0;
@@ -145,21 +145,6 @@
       height: 100%; border-radius: 1px;
       transition: width 0.5s, background 0.5s;
       background: rgba(255,255,255,0.8);
-    }
-
-    /* WiFi widget — robot UI wh-wifi 동일 */
-    .wh-wifi {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.15rem;
-    }
-    .wh-wifi-label {
-      font-size: clamp(0.55rem, 1.8vw, 0.72rem);
-      font-weight: 600;
-      color: rgba(255,255,255,0.85);
-      letter-spacing: 0.05em;
     }
 
     /* ── Main content ───────────────────────────────────────────── */
@@ -408,6 +393,92 @@
       margin-top: 10px;
     }
     .dest-tag-label { font-weight: 400; color: #4b5563; font-size: 0.8rem; }
+
+    /* ── HJ_261120 - 로봇 UI와 같은 숲·나무 테마 ─────────────────────
+       크림 바탕, 짙은 숲색 배너 + 나무색 줄, 종이색 카드(위쪽 색 띠 없음). */
+    :root {
+      --wf-forest: #1f3a2e; --wf-forest-2: #2a4a3b; --wf-bark: #6b4a2f;
+      --wf-cream: #f2ede3; --wf-paper: #fdfbf6; --wf-line: #ddd2c0;
+      --wf-ink: #2b2420; --wf-muted: #6e645a; --wf-soft: #f4eee3;
+      --wf-dim: rgba(150, 124, 78, 0.3);
+    }
+    body { background: var(--wf-cream); color: var(--wf-ink); }
+
+    .app-header { background: var(--wf-forest); border-bottom: 6px solid var(--wf-bark); }
+    .header-label { color: #c9d6c4; }
+    .battery-badge { background: var(--wf-forest-2); color: #fff; }
+
+    .card {
+      background: var(--wf-paper);
+      border: 1.5px solid var(--wf-line);
+      border-top: 1.5px solid var(--wf-line);
+      box-shadow: none;
+    }
+    .cancel-card { border-top-color: var(--wf-line); }
+    .card-title { color: var(--wf-bark); }
+    .site-grid-label, .status-phase, .confirm-desc, .overlay-msg { color: var(--wf-muted); }
+    .status-label, .confirm-title, .overlay-title { color: var(--wf-ink); }
+    .section-divider { background: var(--wf-line); }
+
+    .info-moving, .info-arrived, .info-returning {
+      background: var(--wf-soft); border: 1px solid var(--wf-line); color: var(--wf-ink);
+    }
+    .dest-tag, .confirm-site-tag {
+      background: var(--wf-soft); border-color: var(--wf-line); color: var(--wf-forest);
+    }
+    .dest-tag-label { color: var(--wf-muted); }
+
+    .site-btn { background: #fff; border: 1.5px solid var(--wf-line); color: var(--wf-ink); }
+    /* HJ_261120 - 고른 사이트는 진녹색(서비스 선택 카드와 같은 색) 바탕 + 흰 글씨 + 테두리 빛으로 강조 */
+    .site-btn.selected {
+      background: var(--wf-forest); border-color: var(--wf-forest); color: #fff;
+      box-shadow: 0 0 0 3px rgba(31, 58, 46, 0.25);
+    }
+
+    .overlay { background: rgba(60, 48, 30, 0.55); }
+    .confirm-overlay { background: var(--wf-dim); }
+    .overlay-card, .confirm-dialog {
+      background: var(--wf-paper); border: 1.5px solid var(--wf-line);
+      box-shadow: 0 16px 44px rgba(74, 54, 26, 0.3);
+    }
+    .overlay-card.locked, .overlay-card.grace { border-top: 1.5px solid var(--wf-line); }
+    .grace-count { color: var(--wf-bark); }
+
+    .retry-btn, .btn-confirm, .btn-navigate, .btn-complete {
+      background: var(--wf-forest); color: #fff; box-shadow: none;
+    }
+    .retry-btn:active, .btn-confirm:active, .btn-navigate:active, .btn-complete:active { background: var(--wf-forest-2); }
+    .btn-navigate:disabled, .btn-mission-cancel:disabled {
+      background: #efe9de; color: #a39a90; box-shadow: none;
+    }
+    .btn-cancel { background: #fff; border: 1.5px solid var(--wf-line); color: var(--wf-ink); }
+    .btn-cancel:active { background: var(--wf-soft); }
+    .btn-mission-cancel { background: #b3392f; color: #fff; box-shadow: none; }
+    .confirm-desc strong { color: #b3392f; }
+
+    /* ── HJ_261120 - 사이트 비밀번호 입력 (manager_ui에서 정한 4자리) ── */
+    .pin-dialog { text-align: left; padding: 22px 20px 18px; }
+    .pin-kicker { font-size: 0.75rem; font-weight: 700; color: var(--wf-bark); margin-bottom: 10px; }
+    .pin-dialog .confirm-site-tag { margin-bottom: 12px; }
+    .pin-dialog .confirm-title { font-size: 1.25rem; font-weight: 800; margin-bottom: 6px; }
+    .pin-help { margin-bottom: 16px; }
+    .pin-boxes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .pin-boxes span {
+      height: 58px; border-radius: 12px; border: 1.5px solid var(--wf-line); background: #fff;
+      display: grid; place-items: center; font-size: 1.8rem; font-weight: 800; color: var(--wf-forest);
+    }
+    .pin-boxes span.cur { border-color: var(--wf-forest); box-shadow: 0 0 0 3px rgba(31, 58, 46, 0.14); }
+    .pin-error { min-height: 1.3em; margin-top: 8px; font-size: 0.88rem; font-weight: 700; color: #b3392f; }
+    .pin-pad { margin-top: 6px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .pin-pad button {
+      height: 52px; border-radius: 12px; border: 1.5px solid var(--wf-line); background: #fff;
+      color: var(--wf-ink); font: inherit; font-size: 1.35rem; font-weight: 700; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pin-pad button:active { background: var(--wf-soft); }
+    .pin-pad button.pin-fn { background: var(--wf-soft); font-size: 0.95rem; }
+    .pin-dialog .pin-call { margin-top: 14px; }
+    .pin-hint { margin-top: 10px; font-size: 0.75rem; color: var(--wf-muted); text-align: center; }
   </style>
 </head>
 <body>
@@ -445,8 +516,39 @@
     </div>
     <div class="confirm-btns">
       <button class="btn-cancel" onclick="closeConfirm()">취소</button>
-      <button class="btn-confirm" onclick="confirmNavigate()">호출</button>
+      <!-- HJ_261120 - The safety notice comes first; the site PIN is the next step. -->
+      <button class="btn-confirm" onclick="openPinPad()">다음</button>
     </div>
+  </div>
+</div>
+
+<!-- HJ_261120 - Site PIN step (verified by ui_guest_node before any dispatch) -->
+<div class="confirm-overlay" id="pinOverlay">
+  <div class="confirm-dialog pin-dialog" role="dialog" aria-modal="true" aria-labelledby="pinTitle">
+    <div class="pin-kicker">로봇 호출 · 비밀번호 확인</div>
+    <div class="confirm-site-tag" id="pinSiteTag">--</div>
+    <div class="confirm-title" id="pinTitle">사이트 비밀번호를 입력해 주세요</div>
+    <div class="confirm-desc pin-help">체크인할 때 받은 4자리 번호예요. 모르면 관리사무소에 문의해 주세요.</div>
+    <div class="pin-boxes" aria-hidden="true">
+      <span id="pinBox0"></span><span id="pinBox1"></span><span id="pinBox2"></span><span id="pinBox3"></span>
+    </div>
+    <div class="pin-error" id="pinError" role="alert"></div>
+    <div class="pin-pad">
+      <button type="button" onclick="pressPinKey('1')">1</button>
+      <button type="button" onclick="pressPinKey('2')">2</button>
+      <button type="button" onclick="pressPinKey('3')">3</button>
+      <button type="button" onclick="pressPinKey('4')">4</button>
+      <button type="button" onclick="pressPinKey('5')">5</button>
+      <button type="button" onclick="pressPinKey('6')">6</button>
+      <button type="button" onclick="pressPinKey('7')">7</button>
+      <button type="button" onclick="pressPinKey('8')">8</button>
+      <button type="button" onclick="pressPinKey('9')">9</button>
+      <button type="button" class="pin-fn" onclick="pinBackspace()">지우기</button>
+      <button type="button" onclick="pressPinKey('0')">0</button>
+      <button type="button" class="pin-fn" onclick="closePinPad()">취소</button>
+    </div>
+    <button type="button" class="action-btn btn-navigate pin-call" id="pinCallBtn" disabled onclick="confirmNavigate()">호출</button>
+    <div class="pin-hint">5번 틀리면 1분 동안 입력할 수 없어요</div>
   </div>
 </div>
 
@@ -462,16 +564,6 @@
     </div>
   </div>
   <div class="header-badges">
-    <div class="wh-wifi" id="wifiBadge">
-      <svg id="wifiSvg" width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path id="wArc3" d="M1.5 8.5C5.1 4.9 10.3 3 12 3s6.9 1.9 10.5 5.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
-        <path id="wArc2" d="M4.5 11.5C6.9 9.1 9.7 8 12 8s5.1 1.1 7.5 3.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
-        <path id="wArc1" d="M7.5 14.5C8.9 13.1 10.4 12.5 12 12.5s3.1.6 4.5 2" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
-        <circle id="wDot" cx="12" cy="18" r="1.5" fill="#e53935"/>
-        <line id="wXline" x1="4" y1="4" x2="20" y2="20" stroke="#e53935" stroke-width="2" stroke-linecap="round" style="display:none"/>
-      </svg>
-      <span class="wh-wifi-label">WIFI</span>
-    </div>
     <div class="battery-badge" id="batteryBadge">
       <div class="batt-icon" id="batteryIcon">
         <div class="batt-fill" id="batteryFill" style="width:0%"></div>
@@ -557,6 +649,11 @@
   let currentServiceStateName = 'PREPARING';
   let currentServiceStateDescription = '';
   let selectedSite = null;
+  // HJ_261120 - Site PIN typed in the PIN step; pinPending snapshots the optimistic
+  // request so a server-side PIN rejection can restore the picker exactly.
+  let pinEntry = '';
+  let pinPending = null;
+  const PIN_ERRORS = ['pin_required', 'wrong_pin', 'pin_locked', 'pin_unavailable'];
   let sites = [];
   let lastDestSite = null;  // remember destination while moving/arrived
   // RETURN_WITH_CARGO is used by both delivery and recall.  This latch is set
@@ -633,6 +730,17 @@
       if (Array.isArray(d.sites) && d.sites.length > 0) {
         sites = d.sites;
         buildSiteGrid();
+      }
+      // HJ_261120 - A PIN rejection never dispatched anything: undo the
+      // optimistic request and reopen the PIN step with the server's message.
+      if (PIN_ERRORS.includes(d.error)) {
+        handlePinRejection(d);
+        return;
+      }
+      // Any backend identity frame after a PIN-checked send settles that send.
+      if (pinPending && (d.request_intent !== undefined
+          || d.error !== undefined || d.dispatch_error !== undefined)) {
+        pinPending = null;
       }
       let acceptIdentity = true;
       if (d.identity_revision !== undefined) {
@@ -748,6 +856,7 @@
       heartbeatTimer = null;
       cancelRequestPending = false;
       usageCompletePending = false;
+      pinPending = null;
       setConn(false);
       if (!isLocked && !isGrace) {
         reconnectTimer = setTimeout(() => {
@@ -792,8 +901,8 @@
   }
 
   function setConn(on) {
-    // 연결 상태를 WiFi 배지 투명도로 표현
-    const badge = document.getElementById('wifiBadge');
+    // HJ_261120 - WiFi 표시는 없앴다. 연결 상태는 배터리 배지 투명도로 표현한다.
+    const badge = document.getElementById('batteryBadge');
     if (badge) badge.style.opacity = on ? '1' : '0.4';
   }
 
@@ -1198,6 +1307,8 @@
       btn.className = 'site-btn';
       btn.textContent = site;
       btn.dataset.site = site;
+      // HJ_261120 - A rebuilt grid keeps the current pick highlighted.
+      if (site === selectedSite) btn.classList.add('selected');
       btn.onclick = () => selectSite(site);
       grid.appendChild(btn);
     });
@@ -1226,8 +1337,13 @@
       );
     document.querySelectorAll('.site-btn').forEach(b => {
       b.disabled = !(enabled || (retryEnabled && b.dataset.site === lastDestSite));
+      // HJ_261120 - Status updates must not wipe the guest's own pick: keep the
+      // chosen site highlighted while selection is enabled.
       b.classList.toggle(
-        'selected', retryEnabled && b.dataset.site === lastDestSite
+        'selected',
+        retryEnabled
+          ? b.dataset.site === lastDestSite
+          : enabled && b.dataset.site === selectedSite
       );
     });
     if (retryEnabled) {
@@ -1273,20 +1389,85 @@
     document.getElementById('confirmOverlay').classList.remove('show');
   }
 
+  /* ── HJ_261120 - Site PIN step ── */
+  function renderPin(message) {
+    for (let i = 0; i < 4; i += 1) {
+      const box = document.getElementById(`pinBox${i}`);
+      box.textContent = i < pinEntry.length ? '•' : '';
+      box.classList.toggle('cur', i === pinEntry.length);
+    }
+    if (message !== undefined) document.getElementById('pinError').textContent = message;
+    const callBtn = document.getElementById('pinCallBtn');
+    callBtn.disabled = pinEntry.length !== 4 || Boolean(pinPending);
+    callBtn.textContent = selectedSite ? `${selectedSite}로 호출` : '호출';
+  }
+
+  function openPinPad(message) {
+    closeConfirm();
+    if (!selectedSite || !isDispatchReady()) return;
+    pinEntry = '';
+    document.getElementById('pinSiteTag').textContent = selectedSite + ' 사이트';
+    renderPin(message || '');
+    document.getElementById('pinOverlay').classList.add('show');
+  }
+
+  function closePinPad() {
+    pinEntry = '';
+    document.getElementById('pinOverlay').classList.remove('show');
+  }
+
+  function pressPinKey(digit) {
+    if (pinPending || pinEntry.length >= 4 || !/^[0-9]$/.test(String(digit))) return;
+    pinEntry += String(digit);
+    renderPin('');
+  }
+
+  function pinBackspace() {
+    if (pinPending) return;
+    pinEntry = pinEntry.slice(0, -1);
+    renderPin('');
+  }
+
+  // Restore the picker after the server rejected the PIN (no dispatch happened).
+  function handlePinRejection(d) {
+    const pending = pinPending;
+    pinPending = null;
+    if (pending) {
+      lastDestSite = pending.lastDestSite;
+      activeRequestIntent = pending.activeRequestIntent;
+      activeRequestOwner = pending.activeRequestOwner;
+      activeRequestRetryable = pending.activeRequestRetryable;
+      updateUI();
+      selectSite(pending.site);
+    }
+    let message = String(d.message || '비밀번호를 확인할 수 없어요.');
+    if (d.error === 'pin_locked' && Number(d.retry_after_s) > 0) {
+      message = `비밀번호를 여러 번 틀렸어요. ${Number(d.retry_after_s)}초 후에 다시 시도해 주세요.`;
+    }
+    if (selectedSite) openPinPad(message);
+  }
+
   function confirmNavigate() {
     closeConfirm();
     if (!selectedSite || !isDispatchReady()) return;
+    if (pinEntry.length !== 4 || pinPending) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       // updateUI() disables the grid once this request owns the Guest UI and
       // intentionally clears selectedSite.  Snapshot the accepted identity
       // first so the WebSocket frame cannot be degraded to {site:null}.
       const dispatchSite = selectedSite;
+      const pin = pinEntry;
+      pinPending = {
+        site: dispatchSite, lastDestSite, activeRequestIntent,
+        activeRequestOwner, activeRequestRetryable,
+      };
       lastDestSite = dispatchSite;
       activeRequestIntent = 'recall';
       activeRequestOwner = 'guest';
       activeRequestRetryable = false;
+      closePinPad();
       updateUI();
-      ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite }));
+      ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite, pin }));
     }
   }
 
@@ -1319,32 +1500,6 @@
       ws.send(JSON.stringify({ action: 'cancel' }));
     }
   }
-
-  /* ── WiFi (robot UI 동일: navigator.connection 기반) ── */
-  function getWifiLevel() {
-    if (!navigator.onLine) return 0;
-    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    if (!conn) return 3;
-    const t = conn.effectiveType;
-    if (t === '4g') return 3;
-    if (t === '3g') return 2;
-    return 1;
-  }
-
-  function applyWifiLevel(level) {
-    const arcColor = (min) => level >= min ? '#2d6e40' : '#d0d8d0';
-    document.getElementById('wArc1').setAttribute('stroke', arcColor(1));
-    document.getElementById('wArc2').setAttribute('stroke', arcColor(2));
-    document.getElementById('wArc3').setAttribute('stroke', arcColor(3));
-    document.getElementById('wDot').setAttribute('fill', level > 0 ? '#2d6e40' : '#e53935');
-    document.getElementById('wXline').style.display = level === 0 ? '' : 'none';
-  }
-
-  applyWifiLevel(getWifiLevel());
-  window.addEventListener('online',  () => applyWifiLevel(getWifiLevel()));
-  window.addEventListener('offline', () => applyWifiLevel(getWifiLevel()));
-  const _wconn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (_wconn) _wconn.addEventListener('change', () => applyWifiLevel(getWifiLevel()));
 
   /* ── Init ── */
   connect();

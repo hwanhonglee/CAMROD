@@ -262,4 +262,12 @@ export const EN_GUEST = {
   '다른 목적지 운행이 이미 진행 중입니다.': 'Another trip is already in progress.',
   '현재 운행과 일치하지 않는 이전 요청이 취소되었습니다.': 'An earlier request that did not match this trip was cancelled.',
   '이용객 호출 요청을 전송하지 못했습니다.': 'Could not send the pickup request.',
+  // 사이트 비밀번호 입력 (로봇 화면)
+  '사이트 비밀번호 4자리를 입력해 주세요': 'Enter the 4-digit site PIN',
+  '입력한 자리 수': 'Digits entered',
+  '비밀번호가 맞지 않아요. 다시 입력해 주세요.': 'Wrong PIN. Please try again.',
+  '비밀번호를 확인하지 못했어요. 관리사무소에 문의해 주세요.': 'Could not check the PIN. Please contact the office.',
+  '비밀번호는 관리사무소에서 안내받을 수 있어요': 'You can get the PIN from the campground office',
+  '지우기': 'Delete',
+  '확인 중…': 'Checking…',
 };

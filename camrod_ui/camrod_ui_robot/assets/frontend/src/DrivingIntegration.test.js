@@ -101,8 +101,56 @@ test('short service prompts retain every existing confirmation before sending a 
   expect(host.textContent).not.toContain('로봇이 출발하면 정차할 수 없습니다');
   expect(host.querySelector('[data-ui="operator-move-confirm-yes"]').textContent.trim()).toBe('다음');
   await tap(host.querySelector('[data-ui="operator-move-confirm-yes"]'));
-  expect(host.querySelector('[data-ui="operator-site-code-input"]')).not.toBeNull();
+  // HJ_261120 - The site-name step is now a 4-digit site PIN pad.
+  expect(host.querySelector('[data-ui="operator-site-pin"]')).not.toBeNull();
+  expect(host.querySelector('[data-ui="operator-site-code-confirm"]').disabled).toBe(true);
   expectNoCommands();
+});
+
+// HJ_261120 - Site PIN gate: only a backend-verified PIN continues to the destination command.
+async function openPinPad(verifyResponse) {
+  global.fetch = jest.fn(async (url, options) => (url === '/ui/site_pin/verify'
+    ? { ok: verifyResponse.status === 200, status: verifyResponse.status, json: async () => verifyResponse.body }
+    : { ok: true, status: 200, json: async () => (url === '/api/driving' ? snapshot() : {}) }));
+  await renderApp();
+  await act(async () => {
+    sockets[0].onopen();
+    emit(missionFrame({ states: {}, mission_dispatch_active: false, mission_dispatch_generation: 0,
+      mission_dispatch_site: '', service_state: 0, service_state_name: 'DROP_ZONE_WAIT', mission_phase: 'READY' }));
+  });
+  await tap(host.querySelector('[data-ui="operator-open-destination"]'));
+  await tap(host.querySelector('[data-ui="operator-intent-delivery"]'));
+  await tap(host.querySelector('[data-ui="operator-site-B2"]'));
+  await tap(host.querySelector('[data-ui="operator-site-preview-confirm"]'));
+  await tap(host.querySelector('[data-ui="operator-move-confirm-yes"]'));
+  for (const digit of ['1', '2', '3', '4']) {
+    await tap(host.querySelector(`[data-ui="operator-pin-key-${digit}"]`));
+  }
+  expect(host.querySelector('[data-ui="operator-site-code-confirm"]').disabled).toBe(false);
+  await tap(host.querySelector('[data-ui="operator-site-code-confirm"]'));
+  await act(async () => {});
+}
+const verifyCalls = () => fetch.mock.calls.filter(([url]) => url === '/ui/site_pin/verify');
+
+test('a wrong site PIN keeps the pad open and sends no destination command', async () => {
+  await openPinPad({ status: 403, body: { ok: false, error: 'wrong_pin', remaining_attempts: 4 } });
+  expect(verifyCalls()).toHaveLength(1);
+  expect(JSON.parse(verifyCalls()[0][1].body)).toEqual({ site: 'B2', pin: '1234' });
+  expect(host.querySelector('[data-ui="operator-site-pin"]')).not.toBeNull();
+  expect(host.textContent).toContain('비밀번호가 맞지 않아요. 다시 입력해 주세요.');
+  sockets.forEach(socket => expect(socket.send).not.toHaveBeenCalled());
+});
+
+test('a locked site shows the wait time and sends no destination command', async () => {
+  await openPinPad({ status: 429, body: { ok: false, error: 'locked', locked_s: 42 } });
+  expect(host.textContent).toContain('잠시 후 다시 시도해 주세요 (42초)');
+  sockets.forEach(socket => expect(socket.send).not.toHaveBeenCalled());
+});
+
+test('a verified site PIN closes the pad and continues to the destination command', async () => {
+  await openPinPad({ status: 200, body: { ok: true } });
+  expect(host.querySelector('[data-ui="operator-site-pin"]')).toBeNull();
+  expect(sockets[0].send).toHaveBeenCalled();
 });
 
 beforeEach(() => {

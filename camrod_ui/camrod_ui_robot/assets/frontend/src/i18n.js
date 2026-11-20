@@ -125,6 +125,7 @@ const EN_PATTERNS = [
   [/^임무 완료 후 복귀\s*(\d+%)?$/, 'Will return after this trip $1'],
   [/^(.+) 기준$/, 'As of $1'],
   [/^시연 크기 (.+ m)$/, 'Demo size $1'],
+  [/^잠시 후 다시 시도해 주세요 \((\d+)초\)$/, 'Please try again in $1 s'],
   [/^([A-Z]\d{1,2}) 출차에 실패했습니다\. 같은 사이트를 다시 선택해 주세요\.$/, 'Could not leave for $1. Please select the same site again.'],
   [/^배터리 (\d+(?:\.\d+)?)% 이상과 정상 차량 상태가 필요합니다\.$/, 'Needs at least $1% battery and a healthy robot.'],
   [/^충전 위치를 최신 지도로 확인할 수 없습니다\. \((.*)\)$/, 'Cannot confirm the charger position on the map. ($1)'],

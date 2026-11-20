@@ -175,6 +175,17 @@ def generate_launch_description():
         default_value='8012',
         description='Guest UI bind port',
     )
+    # HJ_261120 - manager_ui: campsite staff set each site's 4-digit PIN (same Wi-Fi only).
+    enable_ui_manager_arg = DeclareLaunchArgument(
+        'enable_ui_manager',
+        default_value='true',
+        description='Enable manager_ui for site PIN management and robot monitoring',
+    )
+    manager_port_arg = DeclareLaunchArgument(
+        'manager_port',
+        default_value='8014',
+        description='manager_ui bind port',
+    )
     # HH_260807 - Snap Chromium cannot enter its sandbox on this robot because
     # snap-confine lacks cap_dac_override.  Keep standalone and full bringup on
     # the field-verified WebKit path; Chromium remains an explicit override.
@@ -538,6 +549,21 @@ def generate_launch_description():
         }],
     )
 
+    # HJ_261120 - manager_ui writes the site PINs that Robot/Guest UI check.
+    manager_ui = Node(
+        package='camrod_ui',
+        executable='ui_manager_node',
+        name='ui_manager',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('enable_ui_manager')),
+        parameters=[{
+            'host': '0.0.0.0',
+            'port': ParameterValue(LaunchConfiguration('manager_port'), value_type=int),
+            'robot_ui_port': ParameterValue(LaunchConfiguration('ui_port'), value_type=int),
+            'platform_status_topic': LaunchConfiguration('platform_status_topic'),
+        }],
+    )
+
     # HH_260727 - This is a non-ROS browser process, so launch it directly
     # instead of using launch_ros Node (which would append unsupported --ros-args).
     operator_ui_window = TimerAction(
@@ -582,6 +608,8 @@ def generate_launch_description():
         enable_ui_guest_arg,
         guest_host_arg,
         guest_port_arg,
+        enable_ui_manager_arg,
+        manager_port_arg,
         enable_operator_ui_window_arg,
         operator_ui_window_engine_arg,
         operator_ui_window_url_arg,
@@ -621,5 +649,6 @@ def generate_launch_description():
         ui_backend,
         mission_recorder,
         guest_ui,
+        manager_ui,
         operator_ui_window,
     ])

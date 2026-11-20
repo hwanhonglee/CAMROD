@@ -6415,3 +6415,83 @@ h1 {
 .waiting-theme-forest .wh-time,
 .waiting-theme-forest .wh-main-title,
 .waiting-theme-forest .wh-subtitle { white-space: nowrap; }
+
+/* ── HJ_261120 - 사이트 비밀번호(4자리) 입력 팝업 ─────────────────────── */
+.move-verify-box.site-pin-box {
+  width: min(94vw, 560px);
+  gap: 0;
+  background: var(--wf-paper, #fdfbf6);
+  border: 1.5px solid var(--wf-line, #ddd2c0);
+}
+.site-pin-box .move-verify-title { color: var(--wf-ink, #2b2420); }
+.site-pin-box .move-verify-site { color: var(--wf-forest, #1f3a2e); }
+.site-pin-box .move-verify-sub { margin-top: 0.4rem; color: var(--wf-muted, #6e645a); }
+.site-pin-boxes {
+  width: 100%;
+  margin-top: 1.1rem;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+.site-pin-boxes span {
+  height: clamp(64px, 9vh, 84px);
+  border-radius: 14px;
+  border: 1.5px solid var(--wf-line, #ddd2c0);
+  background: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1.6rem;
+  color: var(--wf-forest, #1f3a2e);
+}
+.site-pin-boxes span.cur {
+  border-color: var(--wf-forest, #1f3a2e);
+  box-shadow: 0 0 0 3px rgba(31, 58, 46, 0.14);
+}
+.site-pin-boxes.error { animation: site-pin-shake 0.36s ease; }
+.site-pin-boxes.error span { border-color: #c0392b; }
+@keyframes site-pin-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
+.site-pin-msg {
+  margin: 0.7rem 0 0;
+  min-height: 1.5em;
+  font-size: 1rem;
+  color: var(--wf-muted, #6e645a);
+  text-align: center;
+}
+.site-pin-msg.error { color: #b3392f; font-weight: 700; }
+.site-pin-pad {
+  width: 100%;
+  margin-top: 0.9rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+.site-pin-key {
+  height: clamp(58px, 8.5vh, 76px);
+  border-radius: 14px;
+  border: 1.5px solid var(--wf-line, #ddd2c0);
+  background: #fff;
+  color: var(--wf-ink, #2b2420);
+  font: inherit;
+  font-size: 1.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.site-pin-key.fn { background: #f4eee3; font-size: 1.15rem; } /* HJ_261120 - beige, not the theme's pale green --wf-soft */
+.site-pin-key:active:not(:disabled) { background: #efe6d6; }
+.site-pin-key:disabled { opacity: 0.55; }
+.move-confirm-yes.site-pin-confirm {
+  width: 100%;
+  margin-top: 1rem;
+  min-height: clamp(58px, 8.5vh, 72px);
+  border-radius: 14px;
+  background: var(--wf-forest, #1f3a2e);
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+.move-confirm-yes.site-pin-confirm:disabled { background: #efe9de; color: #a39a90; }

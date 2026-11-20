@@ -305,8 +305,10 @@ class OperatorWindowTest(unittest.TestCase):
             / "guest_frontend"
             / "index.html"
         ).read_text(encoding="utf-8")
-        # HH_260904 - Keep Wi-Fi feedback and heartbeat wiring in the shipped guest page.
-        self.assertIn('class="wh-wifi" id="wifiBadge"', guest_html)
+        # HH_260904 - Keep connection feedback and heartbeat wiring in the shipped guest page.
+        # HJ_261120 - The Wi-Fi badge was removed; connection dims the battery badge instead.
+        self.assertNotIn('id="wifiBadge"', guest_html)
+        self.assertIn("document.getElementById('batteryBadge')", guest_html)
         self.assertIn("if (badge) badge.style.opacity", guest_html)
         self.assertIn("{ action: 'heartbeat' }", guest_html)
         self.assertIn("}, 10000);", guest_html)

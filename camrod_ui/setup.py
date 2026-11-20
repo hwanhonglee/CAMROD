@@ -75,6 +75,8 @@ setup(
         ]),
         *_collect_data_files("camrod_ui_robot/assets/frontend/build", f"share/{package_name}/camrod_ui_robot/assets/frontend/build"),
         *_collect_data_files("camrod_ui_guest/assets/guest_frontend", f"share/{package_name}/camrod_ui_guest/assets/guest_frontend"),
+        # HJ_261120 - manager_ui (site PIN management) static page.
+        *_collect_data_files("camrod_ui_manager/assets/manager_frontend", f"share/{package_name}/camrod_ui_manager/assets/manager_frontend"),
     ],
     install_requires=["setuptools", "fastapi", "uvicorn[standard]"],
     zip_safe=True,
@@ -88,6 +90,8 @@ setup(
             # HH_261002 - Passive per-mission decoded platform/CAN recorder.
             "mission_recorder_node = camrod_ui.mission_recorder_node:main",
             "ui_guest_node = camrod_ui.ui_guest_node:main",
+            # HJ_261120 - manager_ui: campsite staff set each site's 4-digit PIN.
+            "ui_manager_node = camrod_ui.ui_manager_node:main",
             # HH_260727 - Native lightweight shell for the operator web UI.
             "camrod_ui_window = camrod_ui.operator_ui_window:main",
         ],

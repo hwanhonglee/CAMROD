@@ -1526,7 +1526,8 @@ class GuestUiContractTest(unittest.TestCase):
         dispatch_snapshot = html.index("const dispatchSite = selectedSite;")
         dispatch_update = html.index("updateUI();", dispatch_snapshot)
         dispatch_send = html.index(
-            "ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite }))",
+            # HJ_261120 - The navigate frame now carries the site PIN.
+            "ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite, pin }))",
             dispatch_snapshot,
         )
         self.assertLess(dispatch_snapshot, dispatch_update)

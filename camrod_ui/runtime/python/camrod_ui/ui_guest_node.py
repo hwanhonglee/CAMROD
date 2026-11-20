@@ -43,6 +43,8 @@ from std_msgs.msg import String
 
 # HH_261102 - Re-export the existing helper name while using the same SOC conversion as Robot UI.
 from camrod_ui.battery_policy import normalize_platform_battery_percent
+from camrod_ui.lan_guard import install_lan_guard
+from camrod_ui.site_access_store import AttemptLimiter, SiteAccessStore, valid_pin
 
 
 def guest_battery_parking_policy_payload(
@@ -90,6 +92,46 @@ def destination_request_owner(source: str) -> str:
     if normalized.startswith("robot_ui:"):
         return "robot"
     return "operator" if normalized else ""
+
+
+# HJ_261120 - Site PIN gate for Guest recall. The phone is untrusted, so the
+# 4-digit PIN managed in manager_ui is verified here before any reservation or
+# publish. Wrong PINs are counted per site; 5 failures lock that site for 60 s.
+GUEST_PIN_MAX_FAILURES = 5
+GUEST_PIN_LOCKOUT_S = 60.0
+GUEST_PIN_MESSAGES = {
+    "pin_required": "사이트 비밀번호 4자리를 입력해 주세요.",
+    "wrong_pin": "비밀번호가 맞지 않아요. 다시 입력해 주세요.",
+    "pin_locked": "비밀번호를 여러 번 틀렸어요. 잠시 후 다시 시도해 주세요.",
+    "pin_unavailable": "비밀번호를 확인할 수 없어요. 관리사무소에 문의해 주세요.",
+}
+
+
+def guest_site_pin_error(store, limiter, site: str, pin) -> Optional[dict]:
+    """Return None when the PIN admits ``site``; otherwise the error frame."""
+
+    def frame(error: str, **extra) -> dict:
+        return {"error": error, "site": site, "message": GUEST_PIN_MESSAGES[error], **extra}
+
+    if store is None or limiter is None:
+        return frame("pin_unavailable")
+    locked_s = limiter.remaining_lock_s(site)
+    if locked_s > 0:
+        return frame("pin_locked", retry_after_s=int(math.ceil(locked_s)))
+    if not valid_pin(pin):
+        # A missing/malformed PIN is a client error, not a guess: not counted.
+        return frame("pin_required")
+    try:
+        ok = bool(store.verify_pin(site, pin))
+    except Exception:  # noqa: BLE001 - unreadable store fails closed
+        return frame("pin_unavailable")
+    limiter.record(site, ok)
+    if ok:
+        return None
+    locked_s = limiter.remaining_lock_s(site)
+    if locked_s > 0:
+        return frame("pin_locked", retry_after_s=int(math.ceil(locked_s)))
+    return frame("wrong_pin")
 
 
 def guest_mission_dispatch_ready(
@@ -238,6 +280,15 @@ class UiGuestNode(Node):
             self.site_names = [f"B{i}" for i in range(1, 14)]
 
         self._lock = threading.Lock()
+        # HJ_261120 - Shared site PIN store (written by manager_ui). Never crash the
+        # guest UI over it; a missing store makes every recall fail closed.
+        self._site_pin_limiter = AttemptLimiter(GUEST_PIN_MAX_FAILURES, GUEST_PIN_LOCKOUT_S)
+        try:
+            self._site_access = SiteAccessStore(sites=self.site_names)
+            self._site_access.ensure_initialized()
+        except Exception as exc:  # noqa: BLE001
+            self._site_access = None
+            self.get_logger().error(f"[guest] site PIN store unavailable: {exc}")
         self._service_state: int = AvgServiceState.DROP_ZONE_WAIT
         self._service_state_description: str = ""
         self._active_site: str = ""
@@ -1113,6 +1164,8 @@ class UiGuestNode(Node):
     def _start_fastapi_server(self) -> None:
         node = self
         app = FastAPI(title="camrod_ui_guest")
+        # HJ_261120 - Only devices on the robot's own Wi-Fi/LAN may open the Guest UI.
+        install_lan_guard(app, node.get_logger())
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -1235,10 +1288,24 @@ class UiGuestNode(Node):
                     # typed roadside recall for the selected B1-B13 site.
                     if action == "navigate":
                         site = str(payload.get("site", "")).strip()
+                        pin_error = None
+                        if site in node.site_names:
+                            # HJ_261120 - Verify the site PIN before reservation/publish.
+                            pin_error = await asyncio.to_thread(
+                                guest_site_pin_error,
+                                getattr(node, "_site_access", None),
+                                getattr(node, "_site_pin_limiter", None),
+                                site, payload.get("pin"),
+                            )
                         if site not in node.site_names:
                             await node._send_guest_payload(
                                 ws, {"error": "invalid_site", "site": site}
                             )
+                        elif pin_error is not None:
+                            node.get_logger().warn(
+                                f"[guest] recall rejected site={site} error={pin_error['error']}"
+                            )
+                            await node._send_guest_payload(ws, pin_error)
                         else:
                             # Admission and reservation are one critical
                             # section. Publishing happens only after ownership
@@ -1261,21 +1328,13 @@ class UiGuestNode(Node):
                                     ),
                                 })
 
-                    # Legacy no-site recall action retained for compatibility.
+                    # HJ_261120 - The legacy no-site recall cannot carry a site PIN, so it
+                    # is refused; the Guest page only sends 'navigate'.
                     elif action == "recall":
-                        admitted, error, current, battery = (
-                            await asyncio.to_thread(
-                                node._reserve_guest_recall_request, "legacy"
-                            )
-                        )
-                        if admitted:
-                            await asyncio.to_thread(node._publish_guest_recall)
-                        else:
-                            await node._send_guest_payload(ws, {
-                                "error": error,
-                                "service_state": current,
-                                "battery": battery,
-                            })
+                        await node._send_guest_payload(ws, {
+                            "error": "pin_required", "site": "",
+                            "message": GUEST_PIN_MESSAGES["pin_required"],
+                        })
 
                     # (확장) 이용 완료 → 드롭존 복귀
                     elif action == "usage_complete":

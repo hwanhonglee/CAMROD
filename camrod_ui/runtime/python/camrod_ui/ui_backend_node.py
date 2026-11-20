@@ -108,6 +108,9 @@ from camrod_ui.service_metrics import (
 from camrod_ui.safety_reset import cancellations_complete, stationary_reset_blockers
 from camrod_ui.safety_reset_api import register_safety_reset_routes
 from camrod_ui.bringup_shutdown_api import register_bringup_shutdown_routes
+from camrod_ui.lan_guard import install_lan_guard
+from camrod_ui.site_access_store import AttemptLimiter, SiteAccessStore
+from camrod_ui.site_pin_api import register_site_pin_routes
 from camrod_ui.signal_profiler import SignalProfiler
 # HH_261102 - Charging access has an explicit same-origin request contract, not page-load motion.
 from camrod_ui.charging_access_api import register_charging_access_routes
@@ -620,6 +623,9 @@ class MissionKeypoint:
     corners: List[tuple[float, float]] = field(default_factory=list)
 
 
+# HJ_261120 - How long a stopped robot must stay still inside drop_zone before it is standby again.
+DROP_ZONE_STANDBY_DWELL_S = 3.0
+
 class UiBackendNode(Node):
     """FastAPI backend that bridges UI destination commands to planning topics."""
 
@@ -1082,6 +1088,14 @@ class UiBackendNode(Node):
         ]
         if not self.site_names:
             self.site_names = [f"B{i}" for i in range(1, 14)]
+        # HJ_261120 - Site PINs set in manager_ui; the kiosk verifies them before dispatch.
+        self._site_pin_limiter = AttemptLimiter(5, 60.0)
+        try:
+            self._site_access = SiteAccessStore(sites=self.site_names)
+            self._site_access.ensure_initialized()
+        except Exception as exc:  # noqa: BLE001
+            self._site_access = None
+            self.get_logger().error(f"site PIN store unavailable: {exc}")
 
         raw_site_to_mission = self.declare_parameter("site_to_mission_key_map", []).value
         self.site_to_mission_key_map = self._parse_site_mission_map(raw_site_to_mission)
@@ -4711,6 +4725,8 @@ class UiBackendNode(Node):
                 )
         # HJ_261105 - Feedback that arrives only after the startup barrier still restores CHARGING once.
         UiBackendNode._restore_startup_charging_state(self, "platform_status")
+        # HJ_261120 - After startup, a stop that leaves the robot parked in drop_zone becomes standby again.
+        UiBackendNode._restore_drop_zone_standby(self, "platform_status")
         battery_fraction = float(msg.battery_percentage)
         # An unavailable sample must revoke admission, not retain a previous
         # 80% indefinitely. Unknown SOC never initiates a speculative return.
@@ -7735,6 +7751,57 @@ class UiBackendNode(Node):
                 source=f"{source}:startup_drop_zone_restored",
             )
 
+    def _restore_drop_zone_standby(self, source: str) -> None:
+        """HJ_261120 - Turn a parked OPERATOR_STOPPED back into standby.
+
+        The startup restore runs once, so a robot that was outside drop_zone at
+        launch (or one stopped by the operator inside drop_zone) otherwise stays
+        OPERATOR_STOPPED and the Guest UI can never call it. Once the robot is
+        idle (no mission, no cargo move, no reset/recovery), measured standstill
+        without e-stop/fault, and fresh map localization inside drop_zone for
+        DROP_ZONE_STANDBY_DWELL_S, publish CHARGING (charger contact) or
+        DROP_ZONE_WAIT. Outside drop_zone nothing changes, so a stop on the road
+        still never becomes publicly dispatchable. No motion owner is armed.
+        """
+        dispatch_lock = getattr(self, "_destination_dispatch_lock", None)
+        if dispatch_lock is None:
+            return UiBackendNode._restore_drop_zone_standby_serialized(self, source)
+        with dispatch_lock:
+            return UiBackendNode._restore_drop_zone_standby_serialized(self, source)
+
+    def _restore_drop_zone_standby_serialized(self, source: str) -> None:
+        candidate = (
+            not bool(getattr(self, "_startup_charging_restore_pending", False))
+            and UiBackendNode._startup_recovery_block(self) is None
+            and getattr(self, "_latest_service_state", None) == int(AvgServiceState.OPERATOR_STOPPED)
+            and not getattr(self, "_active_mission_site", "")
+            and getattr(self, "_charging_access_phase", "inactive") == "inactive"
+            and not bool(getattr(self, "_drop_zone_exit_active", False))
+            and not stationary_reset_blockers(
+                getattr(self, "_safety_reset_motion_observation", None),
+                self._now_s(), time.monotonic())
+        )
+        if candidate:
+            inside, _reason = UiBackendNode._station_departure_origin(self)
+            candidate = inside is True
+        if not candidate:
+            self._drop_zone_standby_since_s = None
+            return
+        now_s = time.monotonic()
+        since_s = getattr(self, "_drop_zone_standby_since_s", None)
+        if since_s is None:
+            self._drop_zone_standby_since_s = now_s
+            return
+        if now_s - since_s < DROP_ZONE_STANDBY_DWELL_S:
+            return
+        self._drop_zone_standby_since_s = None
+        if bool(getattr(self, "_latest_platform_is_charging", False)):
+            self._publish_service_state(
+                AvgServiceState.CHARGING, source=f"{source}:drop_zone_standby_charging")
+        else:
+            self._publish_service_state(
+                AvgServiceState.DROP_ZONE_WAIT, source=f"{source}:drop_zone_standby_restored")
+
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         # HH_261024 - Concurrent policy echoes cannot re-arm during reset.
         if enabled and bool(getattr(self, "_admin_safety_reset_pending", False)):
@@ -9691,6 +9758,9 @@ class UiBackendNode(Node):
         register_safety_reset_routes(app, node)
         # HJ_261118 - Admin-only bringup shutdown (SIGINT to ros2 launch).
         register_bringup_shutdown_routes(app, node)
+        # HJ_261120 - Kiosk site-PIN check, and only the robot's own Wi-Fi/LAN may connect.
+        register_site_pin_routes(app, node)
+        install_lan_guard(app, node.get_logger())
         # HH_261103 - GET only observes; the single cargo departure requires an explicitly confirmed POST.
         register_charging_access_routes(app, node)
 

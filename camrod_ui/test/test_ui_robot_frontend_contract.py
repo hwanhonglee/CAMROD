@@ -43,24 +43,24 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         )
         cls.backend_source = UI_BACKEND_SOURCE.read_text(encoding="utf-8")
 
-    def test_site_verification_owns_virtual_keyboard_input(self) -> None:
-        self.assertIn(": setMoveVerifyInput;", self.source)
-        self.assertIn("activeField === 'moveVerify' || kbCaps", self.source)
-        self.assertIn("setActiveField('moveVerify');", self.source)
-        self.assertIn(
-            'className="vkb-wrap move-verify-keyboard"',
-            self.source,
-        )
+    # HJ_261120 - The typed site-name step was replaced by a 4-digit site PIN pad
+    # whose PIN is checked by the backend before the same confirm path runs.
+    def test_site_pin_pad_replaces_site_name_keyboard(self) -> None:
+        self.assertNotIn('className="vkb-wrap move-verify-keyboard"', self.source)
+        self.assertNotIn('data-ui="operator-site-code-input"', self.source)
+        self.assertIn('data-ui="operator-site-pin"', self.source)
+        self.assertIn("`operator-pin-key-${key}`", self.source)
+        self.assertIn("'operator-pin-clear'", self.source)
+        self.assertIn("disabled={moveVerifyInput.length !== 4 || moveVerifyPending}", self.source)
 
-    def test_site_verification_normalizes_physical_keyboard_input(self) -> None:
-        self.assertIn(
-            "setMoveVerifyInput(e.target.value.toUpperCase())",
-            self.source,
-        )
-        self.assertIn(
-            "onFocus={() => setActiveField('moveVerify')}",
-            self.source,
-        )
+    def test_site_pin_is_verified_by_backend_before_dispatch(self) -> None:
+        start = self.source.index('data-ui="operator-site-code-confirm"')
+        handler = self.source[start:self.source.index("</button>", start)]
+        self.assertIn("fetch('/ui/site_pin/verify'", handler)
+        self.assertIn("if (response.ok && body.ok) { proceed(); return; }", handler)
+        self.assertIn("handleConfirmMove();", handler)
+        self.assertIn("setMoveVerifyError('wrong')", handler)
+        self.assertIn("setMoveVerifyError('locked')", handler)
 
     def test_return_status_exits_idle_screen(self) -> None:
         # HH_261002 - The backend can retain an accepted mission while the

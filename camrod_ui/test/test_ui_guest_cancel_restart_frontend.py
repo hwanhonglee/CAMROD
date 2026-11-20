@@ -18,7 +18,8 @@ class GuestCancelRestartFrontendTest(unittest.TestCase):
             self.skipTest("Node.js is required for actual Guest JavaScript execution")
         html = SOURCE.read_text(encoding="utf-8")
         start = html.index("  let ws = null;")
-        end = html.index("  /* ── WiFi", start)
+        # HJ_261120 - The Wi-Fi block was removed; the replayed slice now ends at Init.
+        end = html.index("  /* ── Init ── */", start)
         production = html[start:end]
         script = r"""
 const assert = require('node:assert/strict');
@@ -90,8 +91,9 @@ assert.equal(element('siteCard').style.display,'none');
 send({...stopped,identity_revision:2,guest_cancel_restart_ready:true});
 assert.equal(element('siteCard').style.display,'block');
 assert.equal(site(1).disabled,false);assert.equal(site(2).disabled,false);
-value("selectSite('B2');openConfirm();confirmNavigate()");
-assert.deepEqual(socket.sent.at(-1),{action:'navigate',site:'B2'});
+// HJ_261120 - Recall now goes notice → site PIN step → navigate with the PIN.
+value("selectSite('B2');openConfirm();openPinPad();pressPinKey('1');pressPinKey('2');pressPinKey('3');pressPinKey('4');confirmNavigate()");
+assert.deepEqual(socket.sent.at(-1),{action:'navigate',site:'B2',pin:'1234'});
 assert.equal(element('siteCard').style.display,'none');
 send({identity_revision:3,service_state:4,service_state_name:'GUEST_RECALL_SERVICE',
   phase:'recall',site:'B2',request_intent:'recall',request_owner:'guest',
@@ -104,8 +106,9 @@ send({...stopped,identity_revision:4,guest_cancel_restart_ready:true});
 assert.equal(element('siteCard').style.display,'block');
 assert.equal(element('cancelCard').style.display,'none');
 assert.equal(value('cancelRequestPending'),false);
-value("selectSite('B1');openConfirm();confirmNavigate()");
-assert.deepEqual(socket.sent.at(-1),{action:'navigate',site:'B1'});
+// HJ_261120 - Recall now goes notice → site PIN step → navigate with the PIN.
+value("selectSite('B1');openConfirm();openPinPad();pressPinKey('1');pressPinKey('2');pressPinKey('3');pressPinKey('4');confirmNavigate()");
+assert.deepEqual(socket.sent.at(-1),{action:'navigate',site:'B1',pin:'1234'});
 send({...stopped,identity_revision:5,guest_cancel_restart_ready:false});
 assert.equal(element('siteCard').style.display,'none');
 assert.equal(value('isDispatchReady()'),false);

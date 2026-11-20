@@ -1565,7 +1565,11 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const serviceDockingPendingRef = useRef(false);
   const [showMoveVerify, setShowMoveVerify] = useState(false);  // 사이트명 입력 확인 팝업
   const [moveVerifyInput, setMoveVerifyInput] = useState('');
+  // HJ_261120 - The site-name step is now a 4-digit site PIN (set in manager_ui).
+  // moveVerifyError: false | 'wrong' | 'locked' | 'unavailable'.
   const [moveVerifyError, setMoveVerifyError] = useState(false);
+  const [moveVerifyLockedS, setMoveVerifyLockedS] = useState(0);
+  const [moveVerifyPending, setMoveVerifyPending] = useState(false);
   const [missionBlockMessage, setMissionBlockMessage] = useState('');
   const [batteryReturnMessage, setBatteryReturnMessage] = useState('');
   const [batteryReturnState, setBatteryReturnState] = useState(emptyBatteryReturnState);
@@ -2762,6 +2766,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     langMissionActiveRef.current = missionDispatch.active;
   }, [missionDispatch.active]);
 
+  // HJ_261120 - Count the site-PIN lockout down, then let the camper try again.
+  useEffect(() => {
+    if (moveVerifyError !== 'locked') return undefined;
+    if (moveVerifyLockedS <= 0) { setMoveVerifyError(false); return undefined; }
+    const timer = setTimeout(() => setMoveVerifyLockedS(value => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [moveVerifyError, moveVerifyLockedS]);
+
   // HJ_261118 - Never leave the arrival confirmation open for a stale arrival.
   useEffect(() => {
     setArrivalConfirmOpen(false);
@@ -3673,74 +3685,94 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         </div>
       )}
 
-      {/* 사이트명 입력 확인 팝업 */}
+      {/* HJ_261120 - 사이트 비밀번호(4자리) 입력 팝업: 기존 사이트명 입력 단계를 대체한다. */}
       {showMoveVerify && selectedSite && (
         <div className="move-verify-overlay" onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}>
-          <div className="move-verify-box" onClick={e => e.stopPropagation()}>
+          <div className="move-verify-box site-pin-box" data-ui="operator-site-pin" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
               {destinationIntent === 'recall'
                 ? t('호출할 사이트')
                 : t('배달할 사이트')}<br />
               <span className="move-verify-site">{selectedSite}</span>
             </p>
-            <p className="move-verify-sub">{t('아래에 사이트명을 입력해주세요')}</p>
-            {moveVerifyError && (
-              <div className="move-verify-error-box">
-                <p className="move-verify-retry">{t('사이트명이 맞지 않아요. 다시 입력해 주세요.')}</p>
-              </div>
-            )}
-            <input
-              data-ui="operator-site-code-input"
-              className={`move-verify-input${moveVerifyError ? ' error' : ''}`}
-              value={moveVerifyInput}
-              onChange={e => { setMoveVerifyInput(e.target.value.toUpperCase()); setMoveVerifyError(false); }}
-              onFocus={() => setActiveField('moveVerify')}
-              placeholder={t(`예: ${selectedSite}`)}
-              autoFocus
-            />
-
-            {/* ── 가상 키보드 (사이트명 확인) ── */}
-            <div className="vkb-wrap move-verify-keyboard">
-              {KB_ROWS.map((row, ri) => (
-                <div key={ri} className="vkb-row">
-                  {row.map(key => (
-                    <button
-                      type="button"
-                      key={key + ri}
-                      className={`vkb-key${key === '⌫' ? ' vkb-wide' : ''}${key === '⇧' ? ' vkb-wide' + (kbCaps ? ' vkb-caps-on' : '') : ''}`}
-                      onClick={() => handleVirtualKey(key)}
-                    >
-                      {key === '⇧' ? (kbCaps ? '⇧ ON' : '⇧') : key === '⌫' ? key : key.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
+            <p className="move-verify-sub">{t('사이트 비밀번호 4자리를 입력해 주세요')}</p>
+            <div className={`site-pin-boxes${moveVerifyError === 'wrong' ? ' error' : ''}`} aria-label={t('입력한 자리 수')}>
+              {[0, 1, 2, 3].map(i => (
+                <span key={i} className={i === moveVerifyInput.length ? 'cur' : ''}>
+                  {i < moveVerifyInput.length ? '●' : ''}
+                </span>
               ))}
-              <div className="vkb-row">
-                <button type="button" className="vkb-key vkb-space" onClick={() => handleVirtualKey('SPACE')}>SPACE</button>
-              </div>
             </div>
-            <div className="move-confirm-btns">
-              <button
-                className="move-confirm-no"
-                onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}
-              >
-                {t('취소')}
-              </button>
-              <button
-                className="move-confirm-yes"
-                data-ui="operator-site-code-confirm"
-                onClick={() => {
-                  if (moveVerifyInput.trim().toUpperCase() === selectedSite.toUpperCase()) {
-                    setShowMoveVerify(false);
-                    handleConfirmMove();
+            <p className={`site-pin-msg${moveVerifyError ? ' error' : ''}`} role="status">
+              {moveVerifyError === 'wrong'
+                ? t('비밀번호가 맞지 않아요. 다시 입력해 주세요.')
+                : moveVerifyError === 'locked'
+                  ? t(`잠시 후 다시 시도해 주세요 (${moveVerifyLockedS}초)`)
+                  : moveVerifyError === 'unavailable'
+                    ? t('비밀번호를 확인하지 못했어요. 관리사무소에 문의해 주세요.')
+                    : t('비밀번호는 관리사무소에서 안내받을 수 있어요')}
+            </p>
+            <div className="site-pin-pad">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'cancel'].map(key => (
+                <button
+                  type="button"
+                  key={key}
+                  data-ui={key === 'clear' ? 'operator-pin-clear' : key === 'cancel' ? 'operator-pin-cancel' : `operator-pin-key-${key}`}
+                  className={`site-pin-key${key === 'clear' || key === 'cancel' ? ' fn' : ''}`}
+                  disabled={moveVerifyPending}
+                  onClick={() => {
+                    if (key === 'cancel') { setShowMoveVerify(false); setMoveVerifyError(false); setMoveVerifyInput(''); return; }
+                    if (key === 'clear') { setMoveVerifyInput(current => current.slice(0, -1)); return; }
+                    if (moveVerifyError !== 'locked') setMoveVerifyError(false);
+                    setMoveVerifyInput(current => (current.length >= 4 ? current : current + key));
+                  }}
+                >
+                  {key === 'clear' ? t('지우기') : key === 'cancel' ? t('취소') : key}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="move-confirm-yes site-pin-confirm"
+              data-ui="operator-site-code-confirm"
+              disabled={moveVerifyInput.length !== 4 || moveVerifyPending}
+              onClick={async () => {
+                if (moveVerifyInput.length !== 4 || moveVerifyPending) return;
+                const proceed = () => {
+                  setShowMoveVerify(false);
+                  setMoveVerifyInput('');
+                  setMoveVerifyError(false);
+                  handleConfirmMove();
+                };
+                if (previewMode) { proceed(); return; }
+                setMoveVerifyPending(true);
+                try {
+                  const response = await fetch('/ui/site_pin/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ site: selectedSite, pin: moveVerifyInput }),
+                  });
+                  const body = await response.json().catch(() => ({}));
+                  if (response.ok && body.ok) { proceed(); return; }
+                  setMoveVerifyInput('');
+                  if (response.status === 429) {
+                    setMoveVerifyLockedS(Number(body.locked_s) || 60);
+                    setMoveVerifyError('locked');
+                  } else if (response.status === 403) {
+                    setMoveVerifyError('wrong');
                   } else {
-                    setMoveVerifyError(true);
+                    setMoveVerifyError('unavailable');
                   }
-                }}
-              >
-                {t('확인')}
-              </button>
-            </div>
+                } catch (_) {
+                  setMoveVerifyInput('');
+                  setMoveVerifyError('unavailable');
+                } finally {
+                  setMoveVerifyPending(false);
+                }
+              }}
+            >
+              {t(moveVerifyPending ? '확인 중…' : '확인')}
+            </button>
           </div>
         </div>
       )}
