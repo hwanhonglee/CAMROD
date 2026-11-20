@@ -1297,6 +1297,17 @@ class UiBackendNode(Node):
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names},
         )
+        # HJ_261120 - occupied_sites sent to the UIs = detected tents ∪ sites a
+        # manager closed for delivery in manager_ui (site_access store). The store
+        # is re-read every second so the kiosk follows the manager without reload.
+        self._detected_occupied_sites: List[str] = []
+        self._manager_disabled_sites: Set[str] = (
+            UiBackendNode._read_manager_disabled_sites(self) or set()
+        )
+        self._state.occupied_sites = UiBackendNode._merged_occupied_sites(self)
+        self._manager_disabled_timer = self.create_timer(
+            1.0, self._refresh_manager_disabled_sites
+        )
         # HH_261001 - Passive public driving data is independent of the single operator
         # telemetry lease and cannot acquire motion authorization.
         self._driving = DrivingSnapshotCache()
@@ -5794,8 +5805,12 @@ class UiBackendNode(Node):
         )
         active_occupied_site = ""
         with self._lock:
-            occupancy_changed = self._state.occupied_sites != occupied_sites
-            self._state.occupied_sites = occupied_sites
+            # HJ_261120 - Keep detected tents separate; the UIs get them merged with
+            # manager-disabled sites. Only detections may cancel a dispatch below.
+            self._detected_occupied_sites = occupied_sites
+            merged_occupied_sites = UiBackendNode._merged_occupied_sites(self)
+            occupancy_changed = self._state.occupied_sites != merged_occupied_sites
+            self._state.occupied_sites = merged_occupied_sites
             active_site = str(self._state.destination.get("site", "")).strip()
             active_run = bool(self._state.destination.get("run", False))
             service_state = int(self._state.service_state)
@@ -5823,7 +5838,7 @@ class UiBackendNode(Node):
                 self._state.destination = {"site": active_site, "run": False}
 
         if occupancy_changed:
-            self._schedule_broadcast({"occupied_sites": occupied_sites})
+            self._schedule_broadcast({"occupied_sites": merged_occupied_sites})
         if active_occupied_site:
             self.get_logger().warn(
                 "active campsite became occupied; stopping dispatch: "
@@ -7846,12 +7861,62 @@ class UiBackendNode(Node):
         return None
 
     def _is_site_occupied(self, site: str) -> bool:
+        # HJ_261120 - A site the manager closed blocks delivery even with the
+        # perception guard off. Read the store now, not the 1 s cache, so a
+        # dispatch right after the manager's change is still refused.
+        manager_disabled = UiBackendNode._read_manager_disabled_sites(self)
+        with self._lock:
+            if manager_disabled is None:
+                manager_disabled = set(getattr(self, "_manager_disabled_sites", ()))
+            if site in manager_disabled:
+                return True
+            detected_sites = set(
+                getattr(self, "_detected_occupied_sites", self._state.occupied_sites)
+            )
         if not self.enable_campsite_occupancy_guard:
             return False
         mission_key = self._resolve_mission_key_for_site(site) or ""
+        return bool(mission_key) and site in detected_sites
+
+    # ── HJ_261120 - Sites closed for delivery in manager_ui ─────────────────────
+    # manager_ui writes them to the shared site_access store; this backend only
+    # reads. They gate *new* delivery selection exactly like a detected tent.
+    # A recall to the site and a mission already under way are not affected.
+
+    def _merged_occupied_sites(self) -> List[str]:
+        """Detected tents ∪ manager-disabled sites. Caller holds _lock (or is __init__)."""
+        return sorted(
+            set(getattr(self, "_detected_occupied_sites", ()))
+            | set(getattr(self, "_manager_disabled_sites", ()))
+        )
+
+    def _read_manager_disabled_sites(self) -> Optional[Set[str]]:
+        """Current manager-disabled sites, or None when the store cannot be read."""
+        store = getattr(self, "_site_access", None)
+        if store is None:
+            return set()
+        try:
+            return set(store.disabled_sites()) & set(self.site_names)
+        except Exception as exc:  # noqa: BLE001 - a bad file must not stop the UI
+            self.get_logger().warning(f"manager disabled sites unreadable: {exc}")
+            return None
+
+    def _refresh_manager_disabled_sites(self) -> None:
+        disabled = UiBackendNode._read_manager_disabled_sites(self)
+        if disabled is None:
+            return  # keep the last known set
         with self._lock:
-            occupied_sites = set(self._state.occupied_sites)
-        return bool(mission_key) and site in occupied_sites
+            if disabled == set(getattr(self, "_manager_disabled_sites", ())):
+                return
+            self._manager_disabled_sites = disabled
+            merged = UiBackendNode._merged_occupied_sites(self)
+            changed = self._state.occupied_sites != merged
+            self._state.occupied_sites = merged
+        self.get_logger().info(
+            f"manager disabled sites: {sorted(disabled) or 'none'}"
+        )
+        if changed:
+            self._schedule_broadcast({"occupied_sites": merged})
 
     def _publish_engage(
         self, enabled: bool, source: str, *, sync_drive_enable: bool = True
@@ -8275,7 +8340,7 @@ class UiBackendNode(Node):
                 "mission_key": mission_key,
                 "goal_pose_published": False,
                 "blocked": True,
-                "message": "campsite occupied by detected tent",
+                "message": "campsite occupied (detected tent or closed in manager_ui)",
             }
 
         departure_required, origin_reason = UiBackendNode._station_departure_origin(self)
@@ -8938,7 +9003,7 @@ class UiBackendNode(Node):
         if run and self._is_site_occupied(normalized_site):
             return {
                 "success": False,
-                "message": "campsite occupied by detected tent",
+                "message": "campsite occupied (detected tent or closed in manager_ui)",
                 "site": normalized_site,
                 "error": "campsite_occupied",
             }

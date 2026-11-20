@@ -132,7 +132,80 @@ function createManagerMonitoring(selectTab, showLogin) {
     drawMap(data, current.destination);
   }
 
+  // HJ_261120 - 사이트 현황: 누르면 배송 선택을 막음/풂. manager_ui가 site_access에 저장하고
+  // 로봇 UI 백엔드가 1초 안에 읽어 키오스크에서 그 사이트를 '사용 중'으로 막는다.
+  const siteBoard = $('siteBoard');
+  let siteBoardBusy = false;
+  let siteBoardSignature = '';
+  let lastMissionData = null;
+
+  function renderSiteBoard(data) {
+    lastMissionData = data;
+    const sites = data.sites || [];
+    const disabled = new Set(data.disabled_sites || []);
+    const occupancy = Array.isArray(data.occupancy) ? new Set(data.occupancy) : null;
+    const keys = data.site_keys || {};
+    const goal = data.mission?.active ? data.mission.site : '';
+    const cells = sites.map(site => {
+      const key = keys[site] || `camping_site_${String(site).replace(/\D/g, '')}`;
+      const closed = disabled.has(site);
+      const detected = !!occupancy && occupancy.has(key);
+      const isGoal = !!goal && goal === site;
+      const label = isGoal ? (closed ? '목적지 · 막음' : '목적지')
+        : closed ? '배송 막음' : detected ? '텐트 감지' : '비어 있음';
+      return { site, closed, detected, isGoal, label };
+    });
+    text('siteBoardMeta', disabled.size ? `배송 막음 ${disabled.size}곳` : '');
+    const signature = JSON.stringify([cells, siteBoardBusy]);
+    if (signature === siteBoardSignature) return;
+    siteBoardSignature = signature;
+    const focused = siteBoard.contains(document.activeElement) ? document.activeElement.dataset.site : null;
+    const buttons = cells.map(({ site, closed, detected, isGoal, label }) => {
+      const cell = element('button', '', 'site-cell'
+        + (closed ? ' closed' : detected ? ' detected' : '') + (isGoal ? ' goal' : ''));
+      cell.type = 'button';
+      cell.dataset.site = site;
+      cell.disabled = siteBoardBusy;
+      cell.setAttribute('aria-pressed', String(closed));
+      cell.title = closed ? '눌러서 배송 선택 다시 허용' : '눌러서 배송 선택 막기 (로봇 UI에서 이 사이트를 고를 수 없게 됩니다)';
+      cell.append(element('b', site), element('span', label));
+      cell.addEventListener('click', () => toggleSite(site, !closed));
+      return cell;
+    });
+    siteBoard.replaceChildren(...(buttons.length ? buttons
+      : [element('p', '사이트 정보 수신 대기', 'monitor-meta')]));
+    if (focused) siteBoard.querySelector(`[data-site="${focused}"]`)?.focus({ preventScroll: true });
+  }
+
+  async function toggleSite(site, disable) {
+    if (siteBoardBusy) return;
+    const confirmed = window.confirm(disable
+      ? `${site} 사이트를 '사용 중'으로 지정할까요?\n\n로봇 UI에서 ${site}(으)로 배송을 고를 수 없게 됩니다.\n(호출과 이미 가고 있는 미션은 영향 없음)`
+      : `${site} 사이트의 '사용 중' 지정을 풀까요?\n\n로봇 UI에서 다시 배송을 고를 수 있게 됩니다.`);
+    if (!confirmed) return;
+    siteBoardBusy = true;
+    siteBoard.setAttribute('aria-busy', 'true');
+    if (lastMissionData) renderSiteBoard(lastMissionData);
+    try {
+      const response = await fetch(`/api/sites/${encodeURIComponent(site)}/disabled`, {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disabled: disable }),
+      });
+      if (response.status === 401) { showLogin(); return; }
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || '저장하지 못했어요.');
+      if (lastMissionData) lastMissionData = { ...lastMissionData, disabled_sites: body.disabled_sites || [] };
+    } catch (error) {
+      window.alert(`${site} 사이트 상태를 바꾸지 못했어요. ${error.message}`);
+    } finally {
+      siteBoardBusy = false;
+      siteBoard.removeAttribute('aria-busy');
+      if (lastMissionData) renderSiteBoard(lastMissionData);
+    }
+  }
+
   function renderMission(data) {
+    renderSiteBoard(data);
     const mission = data.mission || {};
     const current = missionPresentation(mission);
     badge('missionStatus', current.label, mission.active ? 'on' : '');
@@ -145,9 +218,65 @@ function createManagerMonitoring(selectTab, showLogin) {
     text('missionTime', measurement(progress.remaining_time_s, 0, '초'));
   }
 
+  // HJ_261120 - 주행 화면: 로봇 UI(:robot_ui_port)의 보기 전용 주행 화면을 iframe으로 띄운다.
+  // 3D 렌더링과 10Hz 조회가 돌기 때문에 차량 상태 탭이 보일 때만 연다.
+  const DRIVE_DESIGN_H = 620;   // 주행 화면이 제 모습으로 보이는 최소 높이 — 이보다 작으면 비율대로 축소
+  const driveFrame = $('driveFrame');
+  const driveWrap = $('driveFrameWrap');
+  let robotUiPort = 8010;
+  let driveOpen = false;
+
+  function driveUrl() {
+    return `${location.protocol}//${location.hostname}:${robotUiPort}/?view=driving-monitor`;
+  }
+
+  function fitDriveFrame() {
+    const w = driveWrap.clientWidth;
+    const h = driveWrap.clientHeight;
+    if (!w || !h) return;
+    const scale = Math.min(1, h / DRIVE_DESIGN_H);
+    driveFrame.style.width = `${w / scale}px`;
+    driveFrame.style.height = `${h / scale}px`;
+    driveFrame.style.transform = scale < 1 ? `scale(${scale})` : '';
+  }
+
+  function setDriveFrame(open, force = false) {
+    driveOpen = open;
+    const target = open ? driveUrl() : 'about:blank';
+    if (!force && driveFrame.dataset.target === target) return;
+    driveFrame.dataset.target = target;
+    driveFrame.src = target;
+    if (open) requestAnimationFrame(() => { sizeDriveWrap(); fitDriveFrame(); });
+  }
+
+  // 주행 화면 높이: 차량 상태 탭이 스크롤 없이 한 화면에 들어오도록 남는 높이에 맞춘다
+  // (16:9보다 커지지 않고, DRIVE_MIN_H보다 작아지면 스크롤로 본다).
+  const DRIVE_MIN_H = 280;
+  function sizeDriveWrap() {
+    const scroller = driveWrap.closest('main');
+    const panel = driveWrap.closest('.monitor-panel');
+    if (!scroller || !panel || driveWrap.offsetParent === null) return;
+    const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]) || 0;
+    const top = driveWrap.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    const below = px(panel, 'paddingBottom') + px(panel, 'borderBottomWidth') + px(scroller, 'paddingBottom');
+    const avail = scroller.clientHeight - top - below;
+    const byWidth = driveWrap.clientWidth * 9 / 16;
+    driveWrap.style.aspectRatio = 'auto';
+    driveWrap.style.height = `${Math.round(Math.max(DRIVE_MIN_H, Math.min(byWidth, avail)))}px`;
+  }
+
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitDriveFrame).observe(driveWrap);
+  window.addEventListener('resize', () => { if (driveOpen) sizeDriveWrap(); });
+  $('driveReload').addEventListener('click', () => { if (driveOpen) setDriveFrame(true, true); });
+
   function renderVehicle(data) {
+    if (Number.isInteger(data.robot_ui_port) && data.robot_ui_port !== robotUiPort) {
+      robotUiPort = data.robot_ui_port;
+      if (driveOpen) setDriveFrame(true);
+    }
     const raw = data.vehicle || {};
     const vehicle = vehiclePresentation(raw);
+    if (driveOpen) sizeDriveWrap();
     badge('vehicleStatus', vehicle.state, vehicle.tone);
     text('vehicleBattery', vehicle.battery);
     text('vehicleCharging', raw.charging === true ? '충전 중' : raw.charging === false ? '충전 중 아님' : '');
@@ -305,6 +434,7 @@ function createManagerMonitoring(selectTab, showLogin) {
     resetCamera();
     notice('');
     activeView = view;
+    setDriveFrame(view === 'vehicle' && !document.hidden);
     if (views.has(view) && !document.hidden) startPolling(signal => refreshSnapshot(view, signal), 2000);
   }
 

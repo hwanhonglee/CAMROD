@@ -266,6 +266,95 @@ export function useDrivingDisplaySnapshot(feed, store) {
   return snapshot;
 }
 
+/**
+ * HJ_261120 - Remote monitor feed (camrod_monitoring iframe, ?view=driving-monitor).
+ * Polls the same /api/driving cache as the kiosk driving view, at the same rate,
+ * and follows whatever mission the backend reports instead of a local dispatch
+ * latch. Display-only: no WebSocket, no telemetry lease, no command endpoint.
+ */
+export function useDrivingMonitorSnapshot() {
+  const [store] = useState(createDrivingFeedStore);
+
+  useEffect(() => {
+    let disposed = false;
+    let pollTimer = null;
+    let timeoutTimer = null;
+    let controller = null;
+    let lastStoredAt = now();
+    const ageTimer = setInterval(() => {
+      const at = now();
+      if (at - lastStoredAt >= AGE_TICK_STALL_MS) store.set({ clock: at });
+    }, POLL_MS);
+    const storeReply = body => {
+      if (disposed) return;
+      const at = now();
+      lastStoredAt = at;
+      store.set({ clock: at, received: { body, at } });
+    };
+    const schedule = () => {
+      if (!disposed) pollTimer = setTimeout(poll, POLL_MS);
+    };
+    const poll = async () => {
+      if (disposed) return;
+      controller = new AbortController();
+      const requestController = controller;
+      let expired = false;
+      timeoutTimer = setTimeout(() => {
+        expired = true;
+        requestController.abort();
+        storeReply(unavailable('timeout'));
+        schedule();
+      }, REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch('/api/driving', {
+          method: 'GET', cache: 'no-store', signal: requestController.signal,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        if (disposed || expired) return;
+        // Keep the reported mission identity even when telemetry is unavailable.
+        storeReply(body.connected === false
+          ? { ...unavailable('unavailable'), mission: body.mission }
+          : { ...body, connected: true });
+      } catch (error) {
+        if (!disposed && !expired) storeReply(unavailable('unavailable'));
+      } finally {
+        if (!expired) {
+          clearTimeout(timeoutTimer);
+          schedule();
+        }
+      }
+    };
+    poll();
+    return () => {
+      disposed = true;
+      clearInterval(ageTimer);
+      clearTimeout(pollTimer);
+      clearTimeout(timeoutTimer);
+      controller?.abort();
+    };
+  }, [store]);
+
+  const { received, clock } = useSyncExternalStore(store.subscribe, store.get);
+  return useMemo(() => {
+    const body = received?.body || unavailable('waiting');
+    const elapsed = received ? Math.max(0, clock - received.at) / 1000 : 0;
+    return {
+      ...body,
+      pose: advanceAge(body.pose, elapsed),
+      route: advanceAge(body.route, elapsed),
+      motion: advanceAge(body.motion, elapsed),
+      wheel_telemetry: advanceAge(body.wheel_telemetry, elapsed),
+      perception: advancePerceptionAge(body.perception, elapsed),
+      mission: {
+        active: false, generation: 0, site: '', intent: '', owner: '',
+        service_state_name: '', phase: '',
+        ...(body.mission || {}),
+      },
+    };
+  }, [received, clock]);
+}
+
 /** Combined form (feed + snapshot in one component), kept for previews and tests. */
 export default function useDrivingDisplay(props) {
   const { feed, store, ...control } = useDrivingDisplayFeed(props);

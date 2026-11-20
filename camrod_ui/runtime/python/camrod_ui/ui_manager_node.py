@@ -48,11 +48,18 @@ MESSAGES = {
     "wrong_password": "지금 비밀번호가 맞지 않아요.",
     "password_mismatch": "새 비밀번호 확인이 일치하지 않아요.",
     "monitoring_unavailable": "로봇 상태를 가져오지 못했습니다.",
+    "invalid_request": "요청 형식이 올바르지 않아요.",
 }
 
 
 def _error(code: str, status: int, **extra) -> Tuple[int, dict]:
     return status, {"ok": False, "error": code, "message": MESSAGES.get(code, code), **extra}
+
+
+def _site_order(site: str) -> Tuple[str, int, str]:
+    """B2 before B10."""
+    zone, number = site[:1], site[1:]
+    return (zone, int(number), "") if number.isdigit() else (zone, 0, number)
 
 
 class ManagerService:
@@ -121,10 +128,26 @@ class ManagerService:
         if denied:
             return denied
         pins = self.store.pins()
+        disabled = self.store.disabled_sites()
         sites = [{"site": site, "updated_at": pins.get(site, {}).get("updated_at", ""),
-                  "updated_by": pins.get(site, {}).get("updated_by", "")}
+                  "updated_by": pins.get(site, {}).get("updated_by", ""),
+                  "disabled": site in disabled}
                  for site in self.store.sites]
         return 200, {"ok": True, "sites": sites}
+
+    def set_site_disabled(self, token: Optional[str], site: str, disabled: object) -> Tuple[int, dict]:
+        """HJ_261120 - Close/open a site for delivery; the Robot UI follows within ~1 s."""
+        denied = self._authorize(token)
+        if denied:
+            return denied
+        if not isinstance(disabled, bool):
+            return _error("invalid_request", 400)
+        try:
+            current = self.store.set_site_disabled(site, disabled, by=self.store.manager_username())
+        except ValueError as exc:
+            return _error(str(exc), 404 if str(exc) == "unknown_site" else 400)
+        return 200, {"ok": True, "site": str(site).strip().upper(), "disabled": disabled,
+                     "disabled_sites": sorted(current, key=_site_order)}
 
     def reveal_pin(self, token: Optional[str], site: str) -> Tuple[int, dict]:
         denied = self._authorize(token)
@@ -307,6 +330,12 @@ class UiManagerNode(Node):
             data = await payload(request)
             return reply(service.set_pin(token_of(request), site, data.get("pin", "")))
 
+        # HJ_261120 - Close/open a site for delivery (미션현황 사이트 판).
+        @app.post("/api/sites/{site}/disabled")
+        async def post_site_disabled(site: str, request: Request):
+            data = await payload(request)
+            return reply(service.set_site_disabled(token_of(request), site, data.get("disabled")))
+
         @app.get("/api/history")
         async def get_history(request: Request):
             return reply(service.history(token_of(request)))
@@ -346,6 +375,7 @@ class UiManagerNode(Node):
                 if platform_at is not None and now - platform_at <= 2.5 else {},
                 occupancy if occupancy_at is not None and now - occupancy_at <= 5 else None,
                 self.store.sites,
+                disabled=sorted(self.store.disabled_sites(), key=_site_order),
             )
             return reply((200, data) if data is not None else _error("monitoring_unavailable", 503))
 

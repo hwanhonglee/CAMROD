@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act as legacyAct } from 'react-dom/test-utils';
-import useDrivingDisplay, { useDrivingDisplayFeed, useDrivingDisplaySnapshot } from './useDrivingDisplay';
+import useDrivingDisplay, { useDrivingDisplayFeed, useDrivingDisplaySnapshot, useDrivingMonitorSnapshot } from './useDrivingDisplay';
 
 const act = React.act || legacyAct;
 
@@ -351,4 +351,37 @@ test('the feed owner does not re-render per sample; only the subscribed view doe
   expect(ownerRenders).toBe(ownerBefore);
   expect(viewRenders).toBeGreaterThan(viewBefore);
   expect(view.motion.speed_mps).toBe(0.4);
+});
+
+test('remote monitor follows the backend mission, polls at 10 Hz and stops on unmount', async () => {
+  // HJ_261120 - camrod_monitoring iframe: no local dispatch latch, GET only.
+  let view;
+  function MonitorProbe() {
+    view = useDrivingMonitorSnapshot();
+    return null;
+  }
+  await act(async () => { root.render(<MonitorProbe />); });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0][0]).toBe('/api/driving');
+  expect(fetch.mock.calls[0][1].method).toBe('GET');
+  expect(view.connected).toBe(true);
+  expect(view.mission).toMatchObject({ active: true, generation: 42, site: 'B2', phase: 'DRIVING' });
+  await tick(100);
+  expect(fetch).toHaveBeenCalledTimes(2);
+
+  fetch.mockResolvedValue(response({ connected: false, mission: { active: false, generation: 0 } }));
+  await tick(100);
+  expect(view.connected).toBe(false);
+  expect(view.pose).toBeNull();
+  expect(view.mission).toMatchObject({ active: false, site: '' });
+
+  fetch.mockRejectedValue(new Error('down'));
+  await tick(100);
+  expect(view.connected).toBe(false);
+  expect(view.unavailable_reason).toBe('unavailable');
+
+  const calls = fetch.mock.calls.length;
+  await act(async () => { root.render(null); });
+  await tick(1000);
+  expect(fetch).toHaveBeenCalledTimes(calls);
 });

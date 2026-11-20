@@ -383,7 +383,7 @@ function activeStopMissionIdentity(snapshot) {
 
 export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onToggleTheme,
   systemHealth = 'OK', batteryPolicy = null, theme = 'light', demo = false,
-  embedded = true, robotModelUrl = RANGER_MODEL_URL }) {
+  embedded = true, robotModelUrl = RANGER_MODEL_URL, readOnly = false }) {
   const displayRef = useRef(null);
   const gesture = useRef(null);
   const dismissed = useRef(false);
@@ -418,10 +418,12 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
     return () => window.removeEventListener('resize', measure);
   }, [embedded]);
   useEffect(() => {
+    // HJ_261120 - The read-only monitor lives in a host page's iframe; do not take its focus.
+    if (readOnly) return undefined;
     const previous = document.activeElement;
     displayRef.current?.focus({ preventScroll: true });
     return () => { if (previous?.isConnected && typeof previous.focus === 'function') previous.focus({ preventScroll: true }); };
-  }, []);
+  }, [readOnly]);
   const data = normalizeDrivingSnapshot(snapshot, Math.max(0, (now - receivedAt) / 1000));
   // HJ_261118 - 손님 화면 한·영 전환. 문장은 한국어 원문을 두고 표시 직전에 t()로 바꾼다.
   const lang = useLang();
@@ -514,7 +516,7 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
             onClick={(event) => keepOnDisplay(event, () => {
               if (stopMissionIdentity) setConfirmStop(stopMissionIdentity);
             })}><span aria-hidden="true" className="dd-stop-mark" />{en ? 'Stop' : '운행 정지'}</button>}
-          <button type="button" className="dd-action dd-back-action" onClick={event => dismiss(event, true)}>{t(data.mission.active ? '서비스 화면' : '홈으로')}</button>
+          {!readOnly && <button type="button" className="dd-action dd-back-action" onClick={event => dismiss(event, true)}>{t(data.mission.active ? '서비스 화면' : '홈으로')}</button>}
         </div>
       </header>
       {warningLabels.length > 0 && <div className="dd-alerts" role="alert">{warningLabels.map((warning, index) => <span key={`${index}-${warning}`}>{warning}</span>)}</div>}
@@ -545,7 +547,7 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
         </aside>
       </div>
 
-      <footer className="dd-footer"><strong>{t('로봇이 지나가요. 잠시만 양보해 주세요, 금방 지나갈게요!')}</strong><span id={`${id}-dismiss-hint`}>{t('멈춰야 할 때는 위의 [운행 정지]를 눌러주세요 · 빈 곳을 누르면 서비스 화면으로 돌아갑니다')}</span></footer>
+      <footer className="dd-footer"><strong>{t('로봇이 지나가요. 잠시만 양보해 주세요, 금방 지나갈게요!')}</strong><span id={`${id}-dismiss-hint`}>{readOnly ? t('원격 모니터 · 보기 전용 화면입니다') : t('멈춰야 할 때는 위의 [운행 정지]를 눌러주세요 · 빈 곳을 누르면 서비스 화면으로 돌아갑니다')}</span></footer>
       {confirmStop && <div className="dd-stop-layer" data-dd-interactive onClick={event => event.stopPropagation()}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
         <div className="dd-stop-dialog" role="alertdialog" aria-modal="true" aria-labelledby={`${id}-stop-title`}>

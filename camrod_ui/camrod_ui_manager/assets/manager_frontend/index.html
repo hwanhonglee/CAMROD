@@ -107,6 +107,7 @@
     .site th { background: transparent; color: var(--wf-forest); font-size: 14px; font-weight: 800; overflow-wrap: anywhere; }
     .site .tag { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; background: var(--wf-soft); color: var(--wf-muted); white-space: nowrap; }
     .site .tag.new { background: #e3eee5; color: var(--wf-forest); }
+    .site .tag.site-closed-tag { background: #f8ebd5; color: #764812; }  /* HJ_261120 - 배송 막음 */
     .site .pin { font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: .24em; font-weight: 800; color: var(--wf-forest); white-space: nowrap; }
     .site .when { font-size: 12px; color: var(--wf-muted); }
     .site .change-info { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; overflow-wrap: anywhere; }
@@ -273,17 +274,48 @@
           <div><dt>남은 시간</dt><dd id="missionTime">—</dd></div>
         </dl>
       </section>
+      <!-- HJ_261120 - 사이트 현황: 누르면 배송 선택을 막거나 푼다. 막은 사이트는 로봇 UI에서 고를 수 없다. -->
+      <section class="monitor-panel site-board-panel" aria-labelledby="siteBoardTitle">
+        <div class="monitor-heading">
+          <h2 id="siteBoardTitle">사이트 현황</h2>
+          <span class="monitor-meta" id="siteBoardMeta"></span>
+        </div>
+        <p class="monitor-meta site-board-help">사이트를 누르면 <b>배송 선택을 막거나 풀 수 있어요.</b> 막은 사이트는 로봇 UI에서 '사용 중'으로 바뀌어 고를 수 없어요. 호출과 이미 가고 있는 미션은 그대로예요.</p>
+        <div class="site-board" id="siteBoard" role="group" aria-label="사이트별 배송 선택 막기"></div>
+        <p class="monitor-meta site-board-legend">
+          <span><i class="legend-swatch free"></i>비어 있음</span>
+          <span><i class="legend-swatch detected"></i>텐트 감지</span>
+          <span><i class="legend-swatch closed"></i>배송 막음 (관리자 지정)</span>
+          <span><i class="legend-swatch goal"></i>현재 목적지</span>
+        </p>
+      </section>
     </section>
     <section id="tab-vehicle" class="monitor-view" aria-labelledby="vehicleTitle" hidden>
       <div class="monitor-heading"><h1 id="vehicleTitle">차량 상태</h1><span class="monitor-badge" id="vehicleStatus">—</span></div>
-      <div class="monitor-metrics">
-        <div class="monitor-panel"><h2>배터리</h2><p class="monitor-value" id="vehicleBattery">—</p><p class="monitor-meta" id="vehicleCharging"></p></div>
-        <div class="monitor-panel"><h2>주행 속도</h2><p class="monitor-value" id="vehicleSpeed">—</p></div>
-        <div class="monitor-panel"><h2>제어 모드</h2><p class="monitor-value" id="vehicleControl">—</p></div>
-      </div>
-      <section class="monitor-panel">
-        <h2>차대 상세</h2>
-        <dl class="monitor-facts"><div><dt>주행 모드</dt><dd id="vehicleMotion">—</dd></div><div><dt>CAN 오류 코드</dt><dd id="vehicleError">—</dd></div><div><dt>비상정지</dt><dd id="vehicleEstop">—</dd></div><div><dt>상태 수신</dt><dd id="vehicleAge">—</dd></div></dl>
+      <!-- HJ_261120 - 배터리·속도·제어 모드·차대 상세를 한 줄로 모아, 아래 주행 화면까지 한 화면에 들어오게 한다 -->
+      <section class="monitor-panel vehicle-strip" aria-label="차량 상태 요약">
+        <dl class="vehicle-stats">
+          <div><dt>배터리</dt><dd><span id="vehicleBattery">—</span><small id="vehicleCharging"></small></dd></div>
+          <div><dt>주행 속도</dt><dd id="vehicleSpeed">—</dd></div>
+          <div><dt>제어 모드</dt><dd id="vehicleControl">—</dd></div>
+          <div><dt>주행 모드</dt><dd id="vehicleMotion">—</dd></div>
+          <div><dt>CAN 오류 코드</dt><dd id="vehicleError">—</dd></div>
+          <div><dt>비상정지</dt><dd id="vehicleEstop">—</dd></div>
+          <div><dt>상태 수신</dt><dd id="vehicleAge">—</dd></div>
+        </dl>
+      </section>
+      <!-- HJ_261120 - 주행 화면: 로봇 UI가 주행할 때 띄우는 화면을 그대로 보여 준다 (보기 전용) -->
+      <section class="monitor-panel drive-panel" aria-labelledby="driveTitle">
+        <div class="monitor-heading">
+          <h2 id="driveTitle">주행 화면</h2>
+          <div class="drive-actions">
+            <span class="monitor-meta">로봇 UI 화면 · 보기 전용</span>
+            <button class="btn btn-ghost monitor-button" type="button" id="driveReload">다시 불러오기</button>
+          </div>
+        </div>
+        <div class="drive-frame" id="driveFrameWrap">
+          <iframe id="driveFrame" title="로봇 주행 화면 (보기 전용)" src="about:blank"></iframe>
+        </div>
       </section>
     </section>
     <section id="tab-diagnostics" class="monitor-view" aria-labelledby="diagnosticsTitle" hidden>
@@ -481,6 +513,13 @@
         <td class="when"><div class="change-info"><span class="date"></span><span class="tag"></span></div></td>
         <td><div class="acts"><button class="see" type="button">보기</button><button class="chg" type="button">변경</button></div></td>`;
       row.querySelector('th').textContent = s.site;
+      if (s.disabled) {
+        // HJ_261120 - 미션현황에서 배송 선택을 막은 사이트
+        const closed = document.createElement('span');
+        closed.className = 'tag site-closed-tag';
+        closed.textContent = '배송 막음';
+        row.querySelector('th').append(' ', closed);
+      }
       row.querySelector('.date').textContent = s.updated_at ? `${fmt(s.updated_at)} 변경` : '-';
       const ago = s.updated_at ? daysAgo(s.updated_at) : '';
       const tag = row.querySelector('.tag');
@@ -538,7 +577,10 @@
     if (!rows.length) { body.innerHTML = '<tr><td colspan="4" style="color:var(--wf-muted)">아직 변경 이력이 없어요.</td></tr>'; return; }
     rows.forEach(item => {
       const tr = document.createElement('tr');
-      const what = item.action === 'pin_changed' ? '사이트 비밀번호 변경' : item.action === 'manager_changed' ? '관리자 계정 변경' : item.action;
+      const what = {
+        pin_changed: '사이트 비밀번호 변경', manager_changed: '관리자 계정 변경',
+        site_disabled: '배송 선택 막음 (사용 중)', site_enabled: '배송 선택 허용',
+      }[item.action] || item.action;
       [fmt(item.at), item.site || '-', what, item.by || '-'].forEach(text => {
         const td = document.createElement('td'); td.textContent = text; tr.appendChild(td);
       });

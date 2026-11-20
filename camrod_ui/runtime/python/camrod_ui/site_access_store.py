@@ -1,8 +1,9 @@
 """HJ_261120 - Site PINs and the shared manager account for manager_ui.
 
 One JSON file under the per-user state root holds, per site, the 4-digit PIN
-campers type before the robot is sent (Robot UI) or called (Guest UI), plus
-the single shared manager account. manager_ui writes it; ui_backend_node and
+campers type before the robot is sent (Robot UI) or called (Guest UI), the
+sites a manager closed for delivery ("disabled"), plus the single shared
+manager account. manager_ui writes it; ui_backend_node and
 ui_guest_node only read it (they reload when the file changes), so the three
 processes never need a network hop to agree.
 
@@ -134,7 +135,15 @@ class SiteAccessStore:
         history = data.get("history")
         if not isinstance(history, list):
             history, changed = [], True
-        return {"version": 1, "pins": pins, "manager": manager, "history": history}, changed
+        # HJ_261120 - Sites a manager closed for delivery ("사용 중" 지정). Optional
+        # section, kept as-is; entries for sites no longer configured are ignored.
+        disabled = data.get("disabled")
+        if not isinstance(disabled, dict):
+            disabled = {}
+        disabled = {site: entry for site, entry in disabled.items()
+                    if isinstance(site, str) and isinstance(entry, dict)}
+        return {"version": 1, "pins": pins, "manager": manager, "history": history,
+                "disabled": disabled}, changed
 
     def _load(self, persist: bool) -> dict:
         data, changed = self._normalized(dict(self._read_file()))
@@ -186,6 +195,35 @@ class SiteAccessStore:
             return dict(entry)
 
         return self._mutate(apply)
+
+    # ── HJ_261120 - sites closed for delivery ───────────────────────────
+    # manager_ui marks a site "사용 중" (people already there). The Robot UI then
+    # shows it as unavailable and the backend refuses a delivery to it; a recall
+    # to that site and a mission already under way are not affected.
+    def disabled_sites(self) -> Dict[str, dict]:
+        with self._lock:
+            disabled = self._load(persist=False)["disabled"]
+            return {site: dict(disabled[site]) for site in self.sites if site in disabled}
+
+    def set_site_disabled(self, site: str, disabled: bool, by: str) -> Dict[str, dict]:
+        site = str(site or "").strip().upper()
+        if site not in self.sites:
+            raise ValueError("unknown_site")
+
+        def apply(data):
+            current = data["disabled"]
+            if bool(disabled) == (site in current):
+                return  # no change, no history noise
+            if disabled:
+                current[site] = {"at": _now_iso(), "by": str(by)}
+            else:
+                current.pop(site, None)
+            data["history"].append({"at": _now_iso(), "by": str(by), "site": site,
+                                    "action": "site_disabled" if disabled else "site_enabled"})
+            del data["history"][:-HISTORY_LIMIT]
+
+        self._mutate(apply)
+        return self.disabled_sites()
 
     # ── shared manager account ──────────────────────────────────────────
     def manager_username(self) -> str:

@@ -40,7 +40,7 @@ class ManagerMonitoring:
         self.video_port = video_port
         self.camera_topics = {"front": front_topic, "rear": rear_topic}
 
-    def snapshot(self, view, platform, occupancy, sites):
+    def snapshot(self, view, platform, occupancy, sites, disabled=()):
         state = _read_json(self.robot_port, "/ui/state")
         if state is None:
             return None
@@ -63,6 +63,9 @@ class ManagerMonitoring:
             "source": state.get("mission_source"),
             "active": mission.get("active", state.get("mission_dispatch_active")),
         }
+        # HJ_261120 - The 차량 상태 tab embeds the Robot UI's read-only driving
+        # view (http://<same host>:<robot_ui_port>/?view=driving-monitor).
+        result["robot_ui_port"] = self.robot_port
         result["vehicle"] = {
             **platform,
             "battery_pct": (driving.get("battery") or {}).get("percentage"),
@@ -74,8 +77,9 @@ class ManagerMonitoring:
         if view == "mission":
             areas = (driving.get("base_map") or {}).get("areas") or []
             site_keys = {area.get("site"): area.get("id") for area in areas if area.get("site")}
+            # HJ_261120 - disabled: sites the manager closed for delivery (site_access store).
             result.update(sites=sites, site_keys=site_keys, occupancy=occupancy,
-                          progress=driving.get("progress"))
+                          disabled_sites=list(disabled), progress=driving.get("progress"))
         return result
 
     def camera_frame(self, camera):

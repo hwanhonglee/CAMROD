@@ -154,3 +154,56 @@ def test_new_manager_password_needs_four_characters(service):
     _, _, token = login(service)
     assert service.change_account(token, "1234", "admin2", "abc", "abc")[1]["error"] == "weak_password"
     assert service.change_account(token, "1234", "admin2", "camp", "camp")[0] == 200
+
+
+# ── HJ_261120 - sites closed for delivery from the manager's 미션현황 ──────────
+
+def _ready_token(service):
+    status, body, token = login(service)
+    service.change_account(token, "1234", "admin", "camp2026", "camp2026")
+    return token
+
+
+def test_disabled_sites_persist_and_survive_pin_changes(store):
+    assert store.disabled_sites() == {}
+    assert sorted(store.set_site_disabled("b2", True, by="admin")) == ["B2"]
+    # A PIN edit rewrites the whole file; the disabled section must survive it.
+    store.set_pin("B1", "0420", by="admin")
+    other = SiteAccessStore(store.path, SITES)
+    assert sorted(other.disabled_sites()) == ["B2"]
+    assert other.disabled_sites()["B2"]["by"] == "admin"
+    assert store.set_site_disabled("B2", False, by="admin") == {}
+    actions = [item["action"] for item in store.history(10)]
+    assert actions[:3] == ["site_enabled", "pin_changed", "site_disabled"]
+
+
+def test_repeating_the_same_state_adds_no_history(store):
+    store.set_site_disabled("B3", True, by="admin")
+    store.set_site_disabled("B3", True, by="admin")
+    assert [item["action"] for item in store.history(10)].count("site_disabled") == 1
+
+
+def test_unknown_site_cannot_be_disabled(store):
+    with pytest.raises(ValueError):
+        store.set_site_disabled("B99", True, by="admin")
+
+
+def test_disabling_needs_a_changed_manager_account(service, store):
+    status, body, token = login(service)
+    # Default account: everything except the account change is refused.
+    assert service.set_site_disabled(token, "B1", True)[1]["error"] == "must_change"
+    assert service.set_site_disabled("bogus", "B1", True)[0] == 401
+    assert store.disabled_sites() == {}
+
+
+def test_manager_disables_and_enables_a_site(service, store):
+    token = _ready_token(service)
+    status, body = service.set_site_disabled(token, "B2", True)
+    assert status == 200 and body["disabled_sites"] == ["B2"]
+    assert {s["site"]: s["disabled"] for s in service.list_sites(token)[1]["sites"]} == {
+        "B1": False, "B2": True, "B3": False}
+    assert service.set_site_disabled(token, "B2", "yes")[1]["error"] == "invalid_request"
+    assert service.set_site_disabled(token, "B9", True)[0] == 404
+    status, body = service.set_site_disabled(token, "B2", False)
+    assert status == 200 and body["disabled_sites"] == []
+    assert store.history(1)[0]["action"] == "site_enabled"

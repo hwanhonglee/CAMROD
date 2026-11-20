@@ -283,6 +283,16 @@ describe('display interactions', () => {
     root = createRoot(host);
   });
   afterEach(() => { act(() => root.unmount()); host.remove(); jest.useRealTimers(); });
+  test('read-only monitor view has no stop or back control and does not dismiss on tap', () => {
+    // HJ_261120 - camrod_monitoring iframe: display only, no mission authority.
+    act(() => root.render(<DrivingDisplay snapshot={fixture()} readOnly />));
+    expect(host.querySelector('[data-testid="ranger-navigation-scene"]')).not.toBeNull();
+    expect(host.querySelector('.dd-stop-action')).toBeNull();
+    expect(host.querySelector('.dd-back-action')).toBeNull();
+    expect(host.querySelector('.dd-footer').textContent).toContain('보기 전용');
+    act(() => host.querySelector('.driving-display').click());
+    expect(host.querySelector('[data-testid="driving-display"]')).not.toBeNull();
+  });
 
   test('embedded body has a compact brand/status bar and uses the actual Ranger asset', () => {
     act(() => root.render(<DrivingDisplay snapshot={fixture()} onDismiss={() => {}} />));

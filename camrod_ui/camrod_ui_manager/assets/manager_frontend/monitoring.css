@@ -74,3 +74,43 @@ nav .tab-btn:disabled { opacity: .55; cursor: not-allowed; }
 .mission-summary .monitor-facts > div { display: grid; gap: 4px; align-content: start; padding: 10px 0; border-top: 1px solid var(--wf-line); }
 .mission-summary .monitor-facts dt { font-size: 14px; }
 .mission-summary .monitor-facts dd { font-size: clamp(16px, 1.8vw, 20px); line-height: 1.35; }
+
+/* HJ_261120 - 미션현황 사이트 현황: 누르면 배송 선택을 막음/풂 */
+.site-board-panel { margin-top: 12px; }
+.site-board-help { margin-top: 6px; line-height: 1.5; }
+.site-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 12px; }
+.site-cell { display: grid; gap: 3px; align-content: center; min-height: 62px; padding: 8px 6px; border: 1px solid var(--wf-line); border-radius: 8px; background: #fff; color: var(--wf-ink); font: inherit; text-align: center; cursor: pointer; }
+.site-cell b { font-size: 17px; }
+.site-cell span { font-size: 12px; font-weight: 700; color: var(--wf-muted); }
+.site-cell:hover:not(:disabled) { border-color: var(--wf-forest-2); }
+.site-cell:focus-visible { outline: 2px solid var(--wf-forest); outline-offset: 2px; }
+.site-cell:disabled { cursor: progress; opacity: .7; }
+.site-cell.detected { border-color: #d9a59d; background: #fbefec; }
+.site-cell.detected span { color: #8c2c25; }
+.site-cell.closed { border-color: #c9a46b; background: repeating-linear-gradient(135deg, #f8ebd5 0 6px, #fdf6ea 6px 12px); }
+.site-cell.closed span { color: #764812; }
+.site-cell.goal { box-shadow: inset 0 0 0 2px var(--wf-forest); }
+.site-cell.goal span { color: var(--wf-forest); }
+.site-board-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; }
+.site-board-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend-swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; border: 1px solid var(--wf-line); background: #fff; }
+.legend-swatch.detected { border-color: #d9a59d; background: #fbefec; }
+.legend-swatch.closed { border-color: #c9a46b; background: repeating-linear-gradient(135deg, #f8ebd5 0 3px, #fdf6ea 3px 6px); }
+.legend-swatch.goal { box-shadow: inset 0 0 0 2px var(--wf-forest); }
+@media (pointer: coarse) { .site-cell { min-height: 64px; } }
+
+/* HJ_261120 - 차량 상태 › 주행 화면 (로봇 UI 보기 전용 화면 iframe) */
+.drive-panel { margin-top: 12px; }
+.drive-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.drive-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; min-height: 240px; margin-top: 10px; overflow: hidden; border-radius: 8px; background: #f1f5f3; }
+.drive-frame iframe { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; transform-origin: 0 0; }
+
+/* HJ_261120 - 차량 상태 요약 한 줄 (배터리·속도·제어 모드·차대 상세) */
+.vehicle-strip { padding: 10px 6px; }
+.vehicle-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); row-gap: 8px; margin: 0; }
+.vehicle-stats > div { display: grid; gap: 3px; align-content: start; min-width: 0; padding: 2px 12px; border-left: 1px solid var(--wf-line); }
+.vehicle-stats > div:first-child { border-left: 0; }
+.vehicle-stats dt { color: var(--wf-muted); font-size: 12px; font-weight: 700; }
+.vehicle-stats dd { margin: 0; color: var(--wf-forest); font-size: 17px; font-weight: 800; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.vehicle-stats dd small { display: block; color: var(--wf-muted); font-size: 11px; font-weight: 700; }
+.vehicle-strip + .drive-panel { margin-top: 10px; }

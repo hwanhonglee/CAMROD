@@ -3339,5 +3339,110 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertTrue(UiBackendNode._is_site_occupied(backend, "B3"))
 
 
+
+class ManagerDisabledSitesTest(unittest.TestCase):
+    """HJ_261120 - Sites closed in manager_ui gate Robot UI delivery selection only."""
+
+    def setUp(self) -> None:
+        import tempfile
+        from camrod_ui.site_access_store import SiteAccessStore
+        self._tmp = tempfile.TemporaryDirectory()
+        self.store = SiteAccessStore(Path(self._tmp.name) / "site_access.json", ["B3", "B5"])
+        self.store.ensure_initialized()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _backend(self, *, guard: bool = False):
+        logger = SimpleNamespace(info=lambda _m: None, warn=lambda _m: None, warning=lambda _m: None)
+        state = SimpleNamespace(
+            occupied_sites=[],
+            ws_site_states={"B3": True, "B5": False},
+            destination={"site": "B3", "run": True},
+            service_state=int(AvgServiceState.MOVING_TO_SITE),
+        )
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _state=state,
+            site_names=["B3", "B5"],
+            enable_campsite_occupancy_guard=guard,
+            _site_access=self.store,
+            _detected_occupied_sites=[],
+            _manager_disabled_sites=set(),
+            broadcasts=[],
+            stops=[],
+        )
+        backend.get_logger = lambda: logger
+        backend._resolve_mission_key_for_site = lambda site: f"camping_site_{site[1:]}"
+        backend._schedule_broadcast = backend.broadcasts.append
+        backend._apply_destination_command = (
+            lambda site, run, source: backend.stops.append((site, run, source))
+        )
+        return backend
+
+    def test_closed_site_blocks_delivery_even_with_detection_guard_off(self) -> None:
+        backend = self._backend(guard=False)
+        self.assertFalse(UiBackendNode._is_site_occupied(backend, "B5"))
+
+        self.store.set_site_disabled("B5", True, by="admin")
+
+        # The dispatch check reads the store directly, before the 1 s refresh.
+        self.assertTrue(UiBackendNode._is_site_occupied(backend, "B5"))
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+        self.assertEqual(backend._state.occupied_sites, ["B5"])
+        self.assertEqual(backend.broadcasts, [{"occupied_sites": ["B5"]}])
+
+        # Unchanged store: no repeated broadcast.
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+        self.assertEqual(len(backend.broadcasts), 1)
+
+        self.store.set_site_disabled("B5", False, by="admin")
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+        self.assertFalse(UiBackendNode._is_site_occupied(backend, "B5"))
+        self.assertEqual(backend.broadcasts[-1], {"occupied_sites": []})
+
+    def test_closing_the_active_destination_never_stops_the_mission(self) -> None:
+        backend = self._backend(guard=True)
+        self.store.set_site_disabled("B3", True, by="admin")
+
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+
+        self.assertEqual(backend.stops, [])
+        self.assertTrue(backend._state.destination["run"])
+        self.assertTrue(backend._state.ws_site_states["B3"])
+
+    def test_detected_tents_and_closed_sites_are_merged_but_only_detection_cancels(self) -> None:
+        backend = self._backend(guard=True)
+        self.store.set_site_disabled("B5", True, by="admin")
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+        backend.broadcasts.clear()
+
+        message = CampsiteOccupancy()
+        message.occupied_mission_keys = ["camping_site_3"]
+        UiBackendNode._on_campsite_occupancy(backend, message)
+
+        self.assertEqual(backend._state.occupied_sites, ["B3", "B5"])
+        self.assertEqual(backend.broadcasts[0], {"occupied_sites": ["B3", "B5"]})
+        self.assertEqual(backend.stops, [("B3", False, "perception_occupancy")])
+
+        UiBackendNode._on_campsite_occupancy(backend, CampsiteOccupancy())
+        self.assertEqual(backend._state.occupied_sites, ["B5"])
+        self.assertTrue(UiBackendNode._is_site_occupied(backend, "B5"))
+        self.assertFalse(UiBackendNode._is_site_occupied(backend, "B3"))
+
+    def test_unreadable_store_keeps_the_last_known_closed_sites(self) -> None:
+        backend = self._backend()
+        self.store.set_site_disabled("B5", True, by="admin")
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+
+        def broken():
+            raise OSError("disk unavailable")
+        backend._site_access = SimpleNamespace(disabled_sites=broken)
+
+        UiBackendNode._refresh_manager_disabled_sites(backend)
+        self.assertEqual(backend._manager_disabled_sites, {"B5"})
+        self.assertTrue(UiBackendNode._is_site_occupied(backend, "B5"))
+
+
 if __name__ == "__main__":
     unittest.main()

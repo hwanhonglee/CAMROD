@@ -88,6 +88,7 @@ export const EN_DRIVING = {
   '로봇이 지나가요. 잠시만 양보해 주세요, 금방 지나갈게요!': 'Robot passing through. Please give way for a moment — I’ll be quick!',
   '멈춰야 할 때는 위의 [운행 정지]를 눌러주세요 · 빈 곳을 누르면 서비스 화면으로 돌아갑니다':
     'To stop the robot, press [Stop] above · Tap an empty area to return to the service screen',
+  '원격 모니터 · 보기 전용 화면입니다': 'Remote monitor · View only',
   '운행을 정지하시겠습니까?': 'Stop the robot?',
   '기존 운행 정지 기능을 실행합니다.': 'This runs the regular stop function.',
   '계속 주행': 'Keep driving',
