@@ -3,6 +3,7 @@ import { Color, WebGLRenderer } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createRoot } from 'react-dom/client';
 import RangerNavigationScene, { configureCargoPreview, hasIllustrativeRoute,
+  NAVIGATION_FRAME_MIN_INTERVAL_MS, NAVIGATION_MAX_FPS, NAVIGATION_IDLE_REFRESH_MS, samePositions,
   navigationCameraSideOffset, baseMapLinePositions, baseMapLineColors, syncBaseMapVisibility,
   projectVisibleObjectLabel, navigationIllustrationInput, illustratedRoadPositions,
   LANE_BOUNDARY_WIDTH_M, boundaryPaintPositions } from './RangerNavigationScene';
@@ -278,4 +279,55 @@ test('detail direction cycles four faces without triggering dismissal', () => {
   }
   expect(outer).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain('임시 선반');
+});
+
+test('3D rendering is capped at about 30 fps on a 60 Hz display', () => {
+  // HJ_261110 - Every 2nd 60 Hz frame passes even with a little RAF jitter.
+  expect(NAVIGATION_MAX_FPS).toBe(30);
+  expect(2 * (1000 / 60) - 1).toBeGreaterThanOrEqual(NAVIGATION_FRAME_MIN_INTERVAL_MS);
+  expect(1000 / 60 + 1).toBeLessThan(NAVIGATION_FRAME_MIN_INTERVAL_MS);
+});
+
+test('identical geometry keeps the existing GPU buffer', () => {
+  // HH_261126 - Float32 storage is compared after rounding, so re-sent doubles match.
+  expect(samePositions(new Float32Array([0.1, 2, 3]), [0.1, 2, 3])).toBe(true);
+  expect(samePositions(new Float32Array([0.1, 2, 3]), [0.1, 2, 3.001])).toBe(false);
+  expect(samePositions(new Float32Array([0.1, 2]), [0.1, 2, 3])).toBe(false);
+  expect(samePositions(undefined, [])).toBe(false);
+  expect(samePositions(new Float32Array(0), [])).toBe(true);
+});
+
+test('a stationary scene is drawn on change, not at 30 fps', () => {
+  // HH_261126 - Re-delivered identical telemetry must not redraw; a pose change,
+  // a freshness change or the idle refresh interval does.
+  const renderer = { domElement: document.createElement('canvas'), shadowMap: {},
+    info: { render: { calls: 0, triangles: 0 } },
+    setPixelRatio: jest.fn(), getPixelRatio: () => 1, setClearColor: jest.fn(),
+    setSize: jest.fn(), render: jest.fn(), dispose: jest.fn(), forceContextLoss: jest.fn() };
+  WebGLRenderer.mockImplementationOnce(() => renderer);
+  GLTFLoader.mockImplementationOnce(() => ({ load: jest.fn() }));
+  let callback, now = 1000;
+  const clock = jest.spyOn(performance, 'now').mockImplementation(() => now);
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(next => { callback = next; return 1; });
+  const cancel = jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  const frame = (at) => { now = at; act(() => callback(at)); };
+  try {
+    act(() => root.render(<RangerNavigationScene data={data} />));
+    frame(1040);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    for (let at = 1080; at <= 1400; at += 40) frame(at);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    act(() => root.render(<RangerNavigationScene data={{ ...data, pose: { ...data.pose } }} />));
+    frame(1440);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    act(() => root.render(<RangerNavigationScene data={{ ...data, pose: { ...data.pose, x: 0.5 } }} />));
+    frame(1480);
+    expect(renderer.render).toHaveBeenCalledTimes(2);
+    const drawn = renderer.render.mock.calls.length;
+    frame(1480 + NAVIGATION_IDLE_REFRESH_MS + 10);
+    expect(renderer.render.mock.calls.length).toBe(drawn + 1);
+  } finally {
+    act(() => root.unmount());
+    clock.mockRestore(); raf.mockRestore(); cancel.mockRestore();
+  }
 });

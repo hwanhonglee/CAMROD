@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 const OUTBOUND_STATES = new Set([
   'MOVING_TO_SITE', 'GUEST_RECALL_SERVICE', 'RECALL_TO_SITE_ROAD',
@@ -11,7 +11,29 @@ const RETURN_STATES = new Set([
 // Rendering interpolates received poses; this is not a control-loop frequency.
 const POLL_MS = 100;
 const REQUEST_TIMEOUT_MS = 3000;
+// HH_261126 - Normal replies already carry the age clock forward. Tick it separately
+// only once replies stall, so a healthy 10 Hz feed is not rendered twice per sample.
+const AGE_TICK_STALL_MS = POLL_MS * 2;
 const now = () => performance.now();
+
+// HH_261126 - The 10 Hz poll result lives outside React state of the hook's owner.
+// App owns the polling lifetime but does not re-render on every sample; only the
+// driving view that subscribes (useDrivingDisplaySnapshot) re-renders.
+function createDrivingFeedStore() {
+  let state = { received: null, clock: now() };
+  const listeners = new Set();
+  return {
+    get: () => state,
+    set(patch) {
+      state = { ...state, ...patch };
+      listeners.forEach(listener => listener());
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
 
 function unavailable(reason) {
   // HH_261001 - An unavailable response must not retain geometry or a misleading 0 speed.
@@ -44,8 +66,77 @@ function advancePerceptionAge(source, elapsedSeconds) {
   return { ...result, ...agedStreams };
 }
 
-/** HH_261001 - A display-only observer. No mission command is sent by this hook. */
-export default function useDrivingDisplay({
+// HH_261126 - The kiosk and monitor share one bounded GET/timeout path.
+function startDrivingPoll(store, readSnapshot, displayIdentity) {
+  let disposed = false;
+  let pollTimer = null;
+  let timeoutTimer = null;
+  let controller = null;
+  let lastStoredAt = now();
+  const ageTimer = setInterval(() => {
+    const at = now();
+    if (at - lastStoredAt >= AGE_TICK_STALL_MS) store.set({ clock: at });
+  }, POLL_MS);
+  const storeReply = body => {
+    if (disposed) return;
+    const at = now();
+    lastStoredAt = at;
+    store.set({ clock: at, received: { body, at, identity: displayIdentity } });
+  };
+  const schedule = () => {
+    // HH_261001 - Schedule after completion; abort a timed-out request before replacement.
+    if (!disposed) pollTimer = setTimeout(poll, POLL_MS);
+  };
+  const poll = async () => {
+    if (disposed) return;
+    controller = new AbortController();
+    const requestController = controller;
+    let expired = false;
+    timeoutTimer = setTimeout(() => {
+      expired = true;
+      requestController.abort();
+      storeReply(unavailable('timeout'));
+      schedule();
+    }, REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch('/api/driving', {
+        method: 'GET', cache: 'no-store', signal: requestController.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const body = await response.json();
+      if (!disposed && !expired) storeReply(readSnapshot(body));
+    } catch (error) {
+      if (!disposed && !expired) storeReply(unavailable('unavailable'));
+    } finally {
+      if (!expired) {
+        clearTimeout(timeoutTimer);
+        schedule();
+      }
+    }
+  };
+  poll();
+  return () => {
+    disposed = true;
+    clearInterval(ageTimer);
+    clearTimeout(pollTimer);
+    clearTimeout(timeoutTimer);
+    controller?.abort();
+  };
+}
+
+function ageSnapshot(body, elapsed) {
+  return {
+    ...body,
+    pose: advanceAge(body.pose, elapsed),
+    route: advanceAge(body.route, elapsed),
+    motion: advanceAge(body.motion, elapsed),
+    wheel_telemetry: advanceAge(body.wheel_telemetry, elapsed),
+    perception: advancePerceptionAge(body.perception, elapsed),
+  };
+}
+
+// HH_261126 - Own visibility and dispatch latches without subscribing the kiosk to every driving sample.
+export function useDrivingDisplayFeed({
   missionDispatch = {}, serviceStateName = '', missionPhase = '',
   connected = false, blocked = false, injectedSnapshot = null,
 }) {
@@ -64,8 +155,7 @@ export default function useDrivingDisplay({
   const previousIdentity = useRef(missionIdentity);
   const [openKey, setOpenKey] = useState('');
   const [idleOpen, setIdleOpen] = useState(false);
-  const [received, setReceived] = useState(null);
-  const [clock, setClock] = useState(now);
+  const [store] = useState(createDrivingFeedStore);
   const hasInjectedSnapshot = injectedSnapshot !== null;
   const injectedAt = useMemo(() => injectedSnapshot === null ? 0 : now(), [injectedSnapshot]);
   const idleEligible = !active;
@@ -111,78 +201,42 @@ export default function useDrivingDisplay({
   }, [canOpen, eligible, idleEligible, key]);
 
   useEffect(() => {
-    setReceived(null);
+    store.set({ received: null });
     if (!visible || !connected) return undefined;
     if (hasInjectedSnapshot) {
       // HH_261001 - Local preview exercises exactly the same visibility/dismissal policy,
       // but cannot acquire a live telemetry transport under any circumstances.
-      const timer = setInterval(() => setClock(now()), POLL_MS);
+      const timer = setInterval(() => store.set({ clock: now() }), POLL_MS);
       return () => clearInterval(timer);
     }
-    let disposed = false;
-    let pollTimer = null;
-    let timeoutTimer = null;
-    let controller = null;
-    const ageTimer = setInterval(() => setClock(now()), POLL_MS);
-    const store = body => {
-      if (disposed) return;
-      const at = now();
-      setClock(at);
-      setReceived({ body, at, identity: displayIdentity });
-    };
-    const schedule = () => {
-      // HH_261001 - Normal replies schedule the next GET after completion. A timed-out
-      // request is aborted before scheduling its replacement.
-      if (!disposed) pollTimer = setTimeout(poll, POLL_MS);
-    };
-    const poll = async () => {
-      if (disposed) return;
-      controller = new AbortController();
-      const requestController = controller;
-      let expired = false;
-      timeoutTimer = setTimeout(() => {
-        expired = true;
-        requestController.abort();
-        store(unavailable('timeout'));
-        schedule();
-      }, REQUEST_TIMEOUT_MS);
-      try {
-        const response = await fetch('/api/driving', {
-          method: 'GET', cache: 'no-store', signal: requestController.signal,
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = await response.json();
-        if (disposed || expired) return;
-        const identity = body?.mission;
-        const matches = eligible ? identity?.active === true
-          && identity.generation === generation && identity.site === site
-          && identity.intent === intent : idleEligible && identity?.active === false;
-        if (!matches) {
-          store(unavailable('mission_mismatch'));
-        } else if (body.connected === false) {
-          store(unavailable('unavailable'));
-        } else {
-          store({ ...body, connected: true });
-        }
-      } catch (error) {
-        if (!disposed && !expired) store(unavailable('unavailable'));
-      } finally {
-        if (!expired) {
-          clearTimeout(timeoutTimer);
-          schedule();
-        }
-      }
-    };
-    poll();
-    return () => {
-      disposed = true;
-      clearInterval(ageTimer);
-      clearTimeout(pollTimer);
-      clearTimeout(timeoutTimer);
-      controller?.abort();
-    };
-  }, [visible, connected, displayIdentity, eligible, idleEligible,
+    return startDrivingPoll(store, body => {
+      const identity = body?.mission;
+      const matches = eligible ? identity?.active === true
+        && identity.generation === generation && identity.site === site
+        && identity.intent === intent : idleEligible && identity?.active === false;
+      if (!matches) return unavailable('mission_mismatch');
+      return body.connected === false ? unavailable('unavailable') : { ...body, connected: true };
+    }, displayIdentity);
+  }, [store, visible, connected, displayIdentity, eligible, idleEligible,
     generation, site, intent, hasInjectedSnapshot]);
+
+  // HH_261126 - Slow-changing inputs only; identity changes on mission/visibility events.
+  const feed = useMemo(() => ({
+    visible, connected, displayIdentity, eligible, idleEligible, active, generation, site,
+    intent, owner, serviceStateName, missionPhase, injectedSnapshot, injectedAt,
+  }), [visible, connected, displayIdentity, eligible, idleEligible, active, generation, site,
+    intent, owner, serviceStateName, missionPhase, injectedSnapshot, injectedAt]);
+
+  return { visible, canOpen, dismiss, open, feed, store };
+}
+
+export function useDrivingDisplaySnapshot(feed, store) {
+  const { received, clock } = useSyncExternalStore(store.subscribe, store.get);
+  const {
+    visible, connected, displayIdentity, eligible, idleEligible, active, generation, site,
+    intent, owner, serviceStateName, missionPhase, injectedSnapshot, injectedAt,
+  } = feed;
+  const hasInjectedSnapshot = injectedSnapshot !== null;
 
   const snapshot = useMemo(() => {
     const injectedIdentity = injectedSnapshot?.mission;
@@ -197,12 +251,7 @@ export default function useDrivingDisplay({
     const body = current?.body || unavailable(connected ? 'waiting' : 'disconnected');
     const elapsed = current ? Math.max(0, clock - current.at) / 1000 : 0;
     return {
-      ...body,
-      pose: advanceAge(body.pose, elapsed),
-      route: advanceAge(body.route, elapsed),
-      motion: advanceAge(body.motion, elapsed),
-      wheel_telemetry: advanceAge(body.wheel_telemetry, elapsed),
-      perception: advancePerceptionAge(body.perception, elapsed),
+      ...ageSnapshot(body, elapsed),
       mission: {
         ...(body.mission || {}),
         active, generation: active ? generation : 0, site: active ? site : '',
@@ -214,5 +263,23 @@ export default function useDrivingDisplay({
   }, [received, visible, displayIdentity, eligible, idleEligible, clock, connected, active, generation,
     site, intent, owner, serviceStateName, missionPhase, hasInjectedSnapshot, injectedSnapshot, injectedAt]);
 
-  return { visible, canOpen, snapshot, dismiss, open };
+  return snapshot;
+}
+
+// HH_261126 - Follow the backend mission without a kiosk dispatch latch, WebSocket or control lease.
+export function useDrivingMonitorSnapshot() {
+  const [store] = useState(createDrivingFeedStore);
+  useEffect(() => startDrivingPoll(store, body =>
+    body?.connected === true ? body : { ...unavailable('unavailable'), mission: body?.mission }), [store]);
+  const { received, clock } = useSyncExternalStore(store.subscribe, store.get);
+  return useMemo(() => received
+    ? ageSnapshot(received.body, Math.max(0, clock - received.at) / 1000)
+    : unavailable('waiting'), [received, clock]);
+}
+
+/** Combined form (feed + snapshot in one component), kept for previews and tests. */
+export default function useDrivingDisplay(props) {
+  const { feed, store, ...control } = useDrivingDisplayFeed(props);
+  const snapshot = useDrivingDisplaySnapshot(feed, store);
+  return { ...control, snapshot };
 }

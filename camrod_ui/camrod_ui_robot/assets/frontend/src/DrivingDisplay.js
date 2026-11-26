@@ -382,7 +382,7 @@ function activeStopMissionIdentity(snapshot) {
 
 export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onToggleTheme,
   systemHealth = 'OK', batteryPolicy = null, theme = 'light', demo = false,
-  embedded = true, robotModelUrl = RANGER_MODEL_URL }) {
+  embedded = true, robotModelUrl = RANGER_MODEL_URL, readOnly = false }) {
   const displayRef = useRef(null);
   const gesture = useRef(null);
   const dismissed = useRef(false);
@@ -391,7 +391,7 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
   const [now, setNow] = useState(() => Date.now());
   const [availableHeight, setAvailableHeight] = useState(null);
   const [confirmStop, setConfirmStop] = useState(null);
-  const stopMissionIdentity = activeStopMissionIdentity(snapshot);
+  const stopMissionIdentity = readOnly ? null : activeStopMissionIdentity(snapshot);
   // HH_261002 - A pending confirmation expires as soon as its mission identity
   // changes; the click handler also checks synchronously before issuing Stop.
   useEffect(() => {
@@ -421,10 +421,12 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
     return () => window.removeEventListener('resize', measure);
   }, [embedded]);
   useEffect(() => {
+    // HH_261126 - A passive monitor must not take focus from the page hosting it.
+    if (readOnly) return undefined;
     const previous = document.activeElement;
     displayRef.current?.focus({ preventScroll: true });
     return () => { if (previous?.isConnected && typeof previous.focus === 'function') previous.focus({ preventScroll: true }); };
-  }, []);
+  }, [readOnly]);
   const data = normalizeDrivingSnapshot(snapshot, Math.max(0, (now - receivedAt) / 1000));
   const distance = formatDistance(data.remainingDistance);
   const duration = formatDuration(data.remainingTime);
@@ -450,6 +452,7 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
     callback();
   };
   const dismiss = (event, explicit = false) => {
+    if (readOnly) return;
     event.preventDefault();
     event.stopPropagation();
     if (confirmStop || (!explicit && interactive(event.target)) || dismissed.current || (!explicit && gesture.current?.moved)
@@ -499,12 +502,12 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
         <div className="dd-header-actions">
           {onToggleTheme && <button type="button" className="dd-action dd-theme-action" aria-label={theme === 'light' ? '다크 모드' : '라이트 모드'}
             onClick={(event) => keepOnDisplay(event, onToggleTheme)}>{theme === 'light' ? '다크' : '라이트'}</button>}
-          {onSafetyStop && !demo && <button type="button" className="dd-action dd-stop-action"
+          {!readOnly && onSafetyStop && !demo && <button type="button" className="dd-action dd-stop-action"
             disabled={!stopMissionIdentity}
             onClick={(event) => keepOnDisplay(event, () => {
               if (stopMissionIdentity) setConfirmStop(stopMissionIdentity);
             })}>운행 정지</button>}
-          <button type="button" className="dd-action dd-back-action" onClick={event => dismiss(event, true)}>{data.mission.active ? '서비스 화면' : '홈으로'}</button>
+          {!readOnly && <button type="button" className="dd-action dd-back-action" onClick={event => dismiss(event, true)}>{data.mission.active ? '서비스 화면' : '홈으로'}</button>}
         </div>
       </header>
       {warningLabels.length > 0 && <div className="dd-alerts" role="alert">{warningLabels.map((warning, index) => <span key={`${index}-${warning}`}>{warning}</span>)}</div>}
@@ -556,7 +559,9 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
         </aside>
       </div>
 
-      <footer className="dd-footer"><span id={`${id}-dismiss-hint`}><Icon name="touch" size={16} />일반 화면을 터치하면 서비스 화면으로 돌아갑니다</span><span>ESC</span></footer>
+      <footer className="dd-footer"><span id={`${id}-dismiss-hint`}>{readOnly
+        ? '주행 모니터 · 보기 전용 화면입니다'
+        : <><Icon name="touch" size={16} />일반 화면을 터치하면 서비스 화면으로 돌아갑니다</>}</span>{!readOnly && <span>ESC</span>}</footer>
       {confirmStop && <div className="dd-stop-layer" data-dd-interactive onClick={event => event.stopPropagation()}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
         <div className="dd-stop-dialog" role="alertdialog" aria-modal="true" aria-labelledby={`${id}-stop-title`}>

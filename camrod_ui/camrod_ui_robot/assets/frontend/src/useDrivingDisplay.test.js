@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act as legacyAct } from 'react-dom/test-utils';
-import useDrivingDisplay from './useDrivingDisplay';
+import useDrivingDisplay, { useDrivingDisplayFeed, useDrivingDisplaySnapshot } from './useDrivingDisplay';
 
 const act = React.act || legacyAct;
 
@@ -329,4 +329,26 @@ test('injected preview still rejects mismatched identity and respects disconnect
   expect(latest.snapshot.connected).toBe(false);
   expect(latest.snapshot.pose).toBeNull();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test('the feed owner does not re-render per sample; only the subscribed view does', async () => {
+  // HH_261126 - App owns the poll but must not re-render its whole tree at 10 Hz.
+  let ownerRenders = 0, viewRenders = 0, view = null;
+  function View({ feed, store }) {
+    viewRenders += 1;
+    view = useDrivingDisplaySnapshot(feed, store);
+    return null;
+  }
+  function Owner(input) {
+    ownerRenders += 1;
+    const display = useDrivingDisplayFeed(input);
+    return <View feed={display.feed} store={display.store} />;
+  }
+  await act(async () => { root.render(<Owner {...initialProps} />); });
+  const ownerBefore = ownerRenders, viewBefore = viewRenders;
+  for (let step = 0; step < 10; step += 1) await tick(100);
+  expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(5);
+  expect(ownerRenders).toBe(ownerBefore);
+  expect(viewRenders).toBeGreaterThan(viewBefore);
+  expect(view.motion.speed_mps).toBe(0.4);
 });

@@ -1,0 +1,3 @@
+/* HH_261126 - Fill the local monitor viewport without the service-selection layout. */
+.driving-monitor { position: fixed; inset: 0; }
+.driving-monitor .driving-display { cursor: default; }

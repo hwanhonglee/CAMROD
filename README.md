@@ -1,5 +1,16 @@
 # CAMROD
 
+<!-- HH_261126 - Port only shared display changes; keep the CARLA plant and kiosk controls on their tested configuration. -->
+**`virtual/carla` driving UI update (2026-11-26):** From `unit2/main`
+(`3d459d4a0`), port the navigation render optimization (`3b25bb005`) and
+read-only driving monitor (the display portion of `3d459d4a0`).
+With the CARLA Robot UI running, open
+[`http://127.0.0.1:8010/?view=driving-monitor`](http://127.0.0.1:8010/?view=driving-monitor)
+on the simulator PC. The monitor reads only `GET /api/driving`; the normal
+Robot UI remains at `/`, including CARLA manual drive and mission resume.
+Site PIN/admin writes, the C-site map, and field localization defaults are not
+part of this update. [Scope and verification](docs/virtual_carla_ui_sync_20261126.md).
+
 <!-- HH_261103 - Consume the pinned native release through an isolated overlay, not a merge into simulator extensions. -->
 **Current `virtual/carla` service-test checkpoint (2026-11-03):**
 [pinned unit2 overlay setup/build/run](camrod_carla_service_test/README.md) ·

@@ -25,7 +25,7 @@ import {
 } from './ServiceEvidence';
 import SnapshotControl from './SnapshotControl';
 import DrivingDisplay from './DrivingDisplay';
-import useDrivingDisplay from './useDrivingDisplay';
+import { useDrivingDisplayFeed, useDrivingDisplaySnapshot } from './useDrivingDisplay';
 import ManualMissionResume, { manualResumeFromSnapshot } from './ManualMissionResume';
 import { SERVICE_BRAND, SERVICE_COMPANY, SERVICE_LOCATION } from './serviceBranding';
 import './DrivingIntegration.css';
@@ -1292,6 +1292,13 @@ function BatteryIcon({ pct }) {
   );
 }
 
+// HH_261126 - Only this view subscribes to the 10 Hz driving samples. App owns the
+// polling lifetime (useDrivingDisplayFeed) but no longer re-renders per sample.
+function LiveDrivingDisplay({ feed, store, ...props }) {
+  const snapshot = useDrivingDisplaySnapshot(feed, store);
+  return <DrivingDisplay snapshot={snapshot} {...props} />;
+}
+
 function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = {}) {
   // HH_261001 - Local preview renders this SAME application. Only its data source changes;
   // all robot-network authority is explicitly disabled in preview mode.
@@ -1609,7 +1616,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   // HH_261001 - Presentation only. Dismissing this layer must not call Stop,
   // Return, engage, site-toggle or any other mission-authority handler.
-  const drivingDisplay = useDrivingDisplay({
+  const drivingDisplay = useDrivingDisplayFeed({
     missionDispatch, serviceStateName, missionPhase, connected,
     injectedSnapshot: drivingPreviewSnapshot,
     // HH_261002 - A diagnostic ERROR during an accepted safety hold is a
@@ -2639,7 +2646,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // It reuses the read-only driving view without starting or altering a mission.
   const idleMapPanel = !missionDispatch.active && drivingDisplay.visible && (
     <div className="idle-map-panel" data-ui="idle-navigation-map">
-      <DrivingDisplay snapshot={drivingDisplay.snapshot} onDismiss={drivingDisplay.dismiss}
+      <LiveDrivingDisplay feed={drivingDisplay.feed} store={drivingDisplay.store} onDismiss={drivingDisplay.dismiss}
         onToggleTheme={previewMode ? undefined : () => setDrivingTheme(current => current === 'light' ? 'dark' : 'light')}
         systemHealth={systemHealth} batteryPolicy={currentBatteryPolicy}
         embedded={false} demo={previewMode} theme={previewMode ? drivingPreviewTheme : drivingTheme} />
@@ -3251,7 +3258,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         data-preview={previewMode && !drivingDisplay.visible ? 'returned' : undefined}>
         {drivingDisplay.visible && (
           <div className="driving-integrated-panel" data-ui="driving-display-overlay">
-            <DrivingDisplay snapshot={drivingDisplay.snapshot} onDismiss={drivingDisplay.dismiss}
+            <LiveDrivingDisplay feed={drivingDisplay.feed} store={drivingDisplay.store} onDismiss={drivingDisplay.dismiss}
               onSafetyStop={previewMode ? undefined : handleStopMove}
               onToggleTheme={previewMode ? undefined : () => setDrivingTheme(current => current === 'light' ? 'dark' : 'light')}
               systemHealth={systemHealth} batteryPolicy={currentBatteryPolicy}

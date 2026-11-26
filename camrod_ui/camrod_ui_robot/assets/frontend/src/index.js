@@ -10,6 +10,7 @@ import React from 'react';               // React 코어 라이브러리
 import ReactDOM from 'react-dom/client'; // React 18 DOM 렌더링 API
 import App from './App';                 // 메인 App 컴포넌트 (토글 버튼 UI)
 import DrivingPreview from './DrivingPreview';
+import DrivingMonitor from './DrivingMonitor';
 
 // HTML에서 id="root"인 DOM 요소를 React 루트로 생성
 const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -18,6 +19,13 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 // HH_261001 - A clearly labelled local-only design preview never opens mission
 // WebSockets or contacts robot-control endpoints. It renders the
 // SAME App with a guarded injected snapshot so the original UI remains intact.
-const localPreview = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
-  && new URLSearchParams(window.location.search).get('driving_preview') === '1';
-root.render(localPreview ? <DrivingPreview /> : <App />);
+const local = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const query = new URLSearchParams(window.location.search);
+// HH_261126 - Expose the passive view on the simulator PC without opening a new listener or mounting kiosk controls.
+if (query.get('view') === 'driving-monitor') {
+  root.render(local
+    ? <DrivingMonitor theme={query.get('theme') === 'dark' ? 'dark' : 'light'} />
+    : <main>주행 모니터는 시뮬레이터 PC에서만 열 수 있습니다.</main>);
+} else {
+  root.render(local && query.get('driving_preview') === '1' ? <DrivingPreview /> : <App />);
+}
